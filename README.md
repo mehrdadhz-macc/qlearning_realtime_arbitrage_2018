@@ -71,8 +71,10 @@ train.py      # online Q-learning over one price series (paper's own training ==
 evaluate.py   # freeze the learned Q-table, replay greedily on a held-out year (see below)
 
 outputs/
-  runs/<timestamp>/     # q_table_*.npy, price_bin_edges_*.npy, history_*.npy, summary.json
-  eval_plots/, data_plots/
+  runs/<timestamp>/     # everything about ONE run lives here, nothing scattered elsewhere:
+                        #   q_table_*.npy, price_bin_edges_*.npy, history_*.npy, summary.json
+                        #   (written by train.py), eval_summary.json, eval_plot.png (evaluate.py)
+  data_plots/           # raw price-series plots (plot_price_series.py) -- not tied to a run
 ```
 
 ## Train

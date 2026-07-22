@@ -25,13 +25,10 @@ data/test/*.csv
 # Logs
 outputs/logs/
 
-# Generated outputs (models, plots, run artefacts)
-outputs/models/*
-!outputs/models/.gitkeep
-outputs/plots/*
-!outputs/plots/.gitkeep
-outputs/eval_plots/*
-!outputs/eval_plots/.gitkeep
+# Generated outputs: each run is fully self-contained under outputs/runs/
+# <timestamp>/ (q_table_*.npy, price_bin_edges_*.npy, history_*.npy,
+# summary.json, eval_summary.json, eval_plot.png). outputs/data_plots/ is the
+# one exception -- raw price-series plots aren't tied to any specific run.
 outputs/runs/*
 !outputs/runs/.gitkeep
 outputs/data_plots/*

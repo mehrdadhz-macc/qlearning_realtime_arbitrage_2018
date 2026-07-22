@@ -93,8 +93,10 @@ def main():
     plt.legend()
     plt.tight_layout()
 
-    out_path = Path("outputs/eval_plots") / f"eval_{run_dir.name}.png"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    # Kept inside the run's own directory (alongside q_table_*.npy,
+    # summary.json, etc.) rather than a separate top-level outputs/eval_plots/
+    # -- everything about one run's performance lives in one place.
+    out_path = run_dir / "eval_plot.png"
     plt.savefig(out_path, dpi=150)
     print(f"Saved plot to {out_path}")
 
