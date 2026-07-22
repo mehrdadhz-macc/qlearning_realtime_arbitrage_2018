@@ -10,11 +10,14 @@ learning and evaluation; a genuine held-out check is a stronger test.
 Q-learning's epsilon-greedy exploration is random, and (as demonstrated in
 this project's own README) that randomness swings results a lot from one
 seed to the next -- a single run's profit number is one sample, not "the"
-result. --n-trials runs several independent trials per reward kind, each
-with its own seed (seed, seed+1, seed+2, ...), saves every trial's Q-table
-separately under trial_NN/, and reports the mean and std of the profit
-across trials -- the expected-value estimate this project's results should
-actually be judged on, not any single trial's number.
+result. --n-trials runs several independent trials per reward kind, saves
+every trial's Q-table separately under trial_NN/, and reports the mean and
+std of the profit across trials -- the expected-value estimate this
+project's results should actually be judged on, not any single trial's
+number. --seed doesn't feed into any trial directly; it seeds an RNG that
+GENERATES each trial's own (effectively random-looking) seed, so the same
+--seed always reproduces the same set of trial seeds, but two adjacent
+trials never differ by a suspiciously simple +1.
 
 Usage:
     venv/bin/python3 train.py --data data/train/isone_rt_hourly_lmp_2016.csv --reward both --n-trials 10
@@ -101,7 +104,10 @@ def main():
     parser.add_argument("--efficiency-discharge", type=float, default=1.0, help="eta_d (Sec. II AMP objective)")
     parser.add_argument("--reward-efficiency-aware", action="store_true",
                          help="Fold eta_c/eta_d into Reward 1/2 too (paper's literal Sec. III-C formulas omit them)")
-    parser.add_argument("--seed", type=int, default=0, help="Base seed; trial i uses seed + i")
+    parser.add_argument("--seed", type=int, default=0,
+                         help="Seeds the RNG that GENERATES each trial's own seed (not used directly "
+                              "as a trial seed) -- same --seed always reproduces the same set of "
+                              "trial seeds, but they aren't a predictable seed/seed+1/seed+2 sequence")
     parser.add_argument("--n-trials", type=int, default=1,
                          help="Independent trials per reward kind, each with its own seed; "
                               "results are reported as mean +/- std across trials")
@@ -118,14 +124,19 @@ def main():
     reward_kinds = ["reward_1", "reward_2"] if args.reward == "both" else [args.reward]
     summary = {"data": args.data, "n_hours": len(prices), "args": vars(args), "results": {}}
 
+    # --seed controls the RNG that GENERATES each trial's seed, rather than
+    # serving as a trial seed itself -- generated once here (not per reward
+    # kind) so reward_1's trial i and reward_2's trial i share the same
+    # seed, a paired comparison that reduces variance attributable to pure
+    # exploration-randomness luck when comparing the two reward functions.
+    trial_seeds = np.random.default_rng(args.seed).integers(0, 2**31 - 1, size=args.n_trials).tolist()
+
     for reward_kind in reward_kinds:
-        print(f"\nTraining {reward_kind} -- {args.n_trials} trial(s), "
-              f"seeds {args.seed}..{args.seed + args.n_trials - 1}")
+        print(f"\nTraining {reward_kind} -- {args.n_trials} trial(s), seeds {trial_seeds}")
         trial_profits = []
         price_bin_edges = None
 
-        for trial in range(args.n_trials):
-            seed = args.seed + trial
+        for trial, seed in enumerate(trial_seeds):
             agent, history, cumulative_profit, edges = run_training(
                 prices, reward_kind, args.capacity_mwh, args.max_rate_mw, args.n_price_bins,
                 args.alpha, args.gamma, args.epsilon, args.smoothing, seed,
@@ -157,7 +168,7 @@ def main():
         np.save(run_dir / f"price_bin_edges_{reward_kind}.npy", price_bin_edges)
         summary["results"][reward_kind] = {
             "n_trials": args.n_trials,
-            "seeds": [args.seed + t for t in range(args.n_trials)],
+            "seeds": trial_seeds,
             "trial_cumulative_profits": trial_profits,
             "mean_cumulative_profit": mean_profit,
             "std_cumulative_profit": std_profit,

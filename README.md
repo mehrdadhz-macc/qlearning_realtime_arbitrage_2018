@@ -140,14 +140,26 @@ epsilon-greedy exploration is genuinely random -- a single training run is
 one sample, and re-running with a different seed can swing the profit by
 more than an order of magnitude (seen directly on this project's own data:
 $412 to $5,946 to $3,919 across three seeds, same everything else). So
-`--n-trials N` (default 1) runs N independent trials per reward kind, each
-with its own seed (`--seed` is the *base* seed; trial i uses `seed + i`),
-saves every trial's Q-table separately under `outputs/runs/<timestamp>/
-trial_NN/`, and reports **mean +/- std cumulative training profit across
-trials** -- the expected-value estimate that should actually be judged,
-not any one trial's number. Trial 0 with the default `--seed 0` reproduces
-this project's earlier single-trial results exactly (nothing about a single
-trial's behavior changed, `--n-trials` just wraps it in a loop).
+`--n-trials N` (default 1) runs N independent trials per reward kind, saves
+every trial's Q-table separately under `outputs/runs/<timestamp>/trial_NN/`,
+and reports **mean +/- std cumulative training profit across trials** -- the
+expected-value estimate that should actually be judged, not any one trial's
+number.
+
+`--seed` does **not** feed into any trial directly, and is **not** a base
+that trial i offsets by (`seed`, `seed+1`, `seed+2`, ...). Instead it seeds
+an RNG that *generates* each trial's own seed
+(`np.random.default_rng(seed).integers(...)`), so the same `--seed` always
+reproduces the same set of trial seeds, but adjacent trials never differ by
+a suspiciously simple +1, and reward_1's trial i / reward_2's trial i share
+the same generated seed (a paired comparison that reduces noise when judging
+which reward function is actually better). One consequence: `--seed 0` no
+longer reproduces this project's earlier single-trial numbers verbatim --
+trial 0's *generated* seed under `--seed 0` is some large pseudo-random
+integer, not literally `0`. That's an intentional trade-off (a properly
+generated seed sequence over a predictable arithmetic one), not a
+regression -- rerun with `--n-trials` to get the properly-averaged result
+instead of chasing one specific historical number.
 
 Reported profit is always the true AMP-objective profit (`env.true_profit`,
 Sec. II), not the shaped reward signal. Key flags: `--capacity-mwh` (default
@@ -278,6 +290,16 @@ first three fixed:
 | Training profit, Reward 2 (2016) | -$558.13 | **+$412.68** |
 | Held-out profit, Reward 1 (2017) | +$4,078.26 | +$6,168.60 |
 | Held-out profit, Reward 2 (2017) | +$5,416.05 | **+$15,801.46** |
+
+(Both columns are single-trial numbers from literal `--seed 0`, from before
+`--n-trials`/multi-trial seed generation existed -- kept here as a historical
+record of what the bin-fitting fix changed, holding the seed fixed as the
+one variable. They are **not** reproducible today with `--seed 0 --n-trials
+1`, since `--seed` now seeds an RNG that generates trial seeds rather than
+being used as a trial seed directly -- see Train below. Given the seed-to-
+seed variance demonstrated throughout this README, treat this table as
+illustrating the *direction* and rough *size* of the binning fix's effect,
+not as two exact numbers to reproduce.)
 
 Fixing the price-bin look-ahead/resolution issue alone flipped Reward 2's
 training-time result from a loss to a genuine profit (matching the paper's
