@@ -82,12 +82,20 @@ venv/bin/python3 train.py --data data/train/isone_rt_hourly_lmp_2016.csv --rewar
 ```
 
 Trains both Reward 1 and Reward 2 online over the 2016 series and prints
-cumulative training profit for each (paper Fig. 4's headline comparison).
-Key flags: `--capacity-mwh` (default 8), `--max-rate-mw` (default 1, paper
-also reports a 2 MW case), `--n-price-bins` (default 10 -- **not specified
-numerically in the paper**), `--alpha`/`--gamma`/`--epsilon` (0.5/0.9/0.9 per
-Algorithm 1), `--smoothing` (Reward 2's moving-average eta, Eq. 6 -- **also
-not given a numeric value in the paper**; default 0.1).
+cumulative training profit for each (paper Fig. 4's headline comparison), now
+using the true AMP-objective profit (`env.true_profit`, Sec. II) rather than
+the shaped reward signal. Key flags: `--capacity-mwh` (default 8),
+`--max-rate-mw` (default 1, paper also reports a 2 MW case), `--n-price-bins`
+(default 10 -- **not specified numerically in the paper**),
+`--price-bin-method` (`quantile` default, `equal_width` for the paper's more
+literal "M even price intervals" reading -- see Deviations below),
+`--bin-calibration-hours` (default 720 = 30 days, how much of the series is
+used to fit price bins before training starts), `--alpha`/`--gamma`/`--epsilon`
+(0.5/0.9/0.9 per Algorithm 1), `--smoothing` (Reward 2's moving-average eta,
+Eq. 6 -- **also not given a numeric value in the paper**; default 0.1),
+`--efficiency-charge`/`--efficiency-discharge` (eta_c/eta_d, default 1.0),
+`--reward-efficiency-aware` (fold efficiencies into Reward 1/2 too, off by
+default to match the paper's literal Sec. III-C formulas).
 
 ## Evaluate
 
@@ -103,6 +111,8 @@ learning and evaluation. Reuses the exact price-bin edges fit during
 training (saved as `price_bin_edges_*.npy`) rather than refitting bins from
 the test set's own price range, since evaluating a trained Q-table against
 differently-defined state bins would silently read the wrong table entries.
+If you trained with non-default `--efficiency-charge`/`--efficiency-discharge`,
+pass the same values here -- they aren't auto-loaded from the training run.
 
 ## Deviations / assumptions (where the paper is ambiguous)
 
@@ -117,14 +127,43 @@ differently-defined state bins would silently read the wrong table entries.
 - **Efficiencies (eta_c, eta_d)** appear in the paper's AMP objective (Sec.
   II) but are dropped from the literal Reward 1 / Reward 2 formulas (Sec.
   III-C). `src/rewards.py` implements the literal (no-efficiency) formulas
-  by default; pass `efficiency_aware=True` to fold efficiencies in.
+  by default (`--reward-efficiency-aware` to fold them in), but the
+  *reported profit* (`env.true_profit`) always applies eta_c/eta_d, since
+  that's the AMP objective itself, not a reward-shaping choice.
 - **Price bin count (M) and Reward 2's smoothing constant (eta)** are used
   in the paper's derivation but no numeric values are given for the case
   study -- both are exposed as CLI flags with documented (not paper-sourced)
   defaults.
+- **Price bin *method*** -- Sec. III-A's "M even price intervals from the
+  lowest to the highest" reads most literally as equal-width bins fit over
+  the whole series. We instead default to `--price-bin-method quantile`
+  (equal-frequency bins) fit causally from only the first
+  `--bin-calibration-hours` of the series (default 720h = 30 days). Two
+  separate reasons: (1) fitting bin edges from the *entire* series (including
+  months that haven't "happened" yet from the agent's perspective) contradicts
+  the paper's own framing that the storage "does not have a priori knowledge
+  of the prices" (Sec. III intro) -- fitting only a causal prefix avoids that;
+  (2) 2016 ISO-NE prices are heavy-tailed (-$156 to +$1439, most hours in
+  $10-60), so equal-width bins spent ~8 of 10 bins on rarely-visited spike
+  territory and crushed the everyday range -- where most arbitrage
+  opportunity lives -- into 1-2 bins. Switching to causal quantile bins
+  measurably changed results (see Known findings). `--price-bin-method
+  equal_width` is available for the more literal paper reading.
 - **Fig. 1's caption** says "PJM Real-time price," but the body text and
   citation [19] both specify ISO-NE hourly real-time LMP -- treated as a
   caption typo, not a real data-source ambiguity.
+- **Data node**: the paper's citation [19] doesn't specify which ISO-NE price
+  series ("Hub" vs. system-wide load-weighted average) it used. This project
+  downloads the `ISO NE CA` (system/control-area) sheet's `RT_LMP` from
+  ISO-NE's bulk archive. Separately, the Web Services API (tested live)
+  explicitly serves the Hub node (`.H.INTERNAL_HUB`, ID 4000) but only for
+  recent years, not 2016/2017. These are two distinct, well-defined ISO-NE
+  series and **are not verified to be numerically identical** -- I wasn't
+  able to cross-check an overlapping date since the ISO Express credentials
+  used for that live test were deleted (`.env` was removed once the API's
+  historical-retention limit was found) before this question came up. If you
+  want to settle this, re-add ISONE_WS_USER/PASSWORD and pull one 2018+ date
+  from both sources for comparison.
 - Qin et al.'s online modified greedy baseline ([15] in the paper, used for
   the Sec. IV-C comparison) is not implemented here -- would need reading
   that paper directly rather than guessing its threshold rule from a
@@ -132,22 +171,49 @@ differently-defined state bins would silently read the wrong table entries.
 
 ## Known findings from this replication
 
-Ran end-to-end on the real 2016/2017 series with default hyperparameters
-(`--n-price-bins 10 --alpha 0.5 --gamma 0.9 --epsilon 0.9 --smoothing 0.1`):
+**Methodology audit.** After the initial real-data run, the implementation
+was checked line-by-line against the paper's Sections II-IV. The core RL
+loop matched exactly (state/action timing, Lemma 1 bang-bang actions, Eq. 7
+Q-update, Reward 1/2 formulas, epsilon-greedy). Four gaps were found and the
+first three fixed:
 
-- Training (online, on 2016): both rewards net *negative* cumulative profit
-  (Reward 1: -$778, Reward 2: -$558) -- unlike the paper's own reported
-  training-time result (~+$28k for Reward 2 on an 8MWh/1MW battery). Given
-  how many of the paper's own hyperparameters aren't numerically specified
-  (price bin count, Reward 2's smoothing constant -- see Deviations above),
-  this isn't surprising; it means our particular defaults haven't found a
-  profitable policy within one pass over 2016, not that the approach itself
-  is broken.
-- Held-out evaluation (frozen greedy policy replayed on 2017, which the
-  paper itself never does): **both rewards turn positive, and Reward 2 beats
-  Reward 1** (Reward 1: +$4,078, Reward 2: +$5,416) -- which does match the
-  paper's central qualitative claim (Reward 2 > Reward 1) even though the
-  training-time numbers above don't match its magnitude.
+1. **Dead efficiency plumbing (fixed).** `StorageArbitrageEnv` accepted
+   `efficiency_charge`/`efficiency_discharge` but never used them, and
+   `train.py`/`evaluate.py` never wired eta_c/eta_d into the reward
+   functions. Now: `env.true_profit()` always applies them (AMP objective,
+   Sec. II); `--reward-efficiency-aware` optionally folds them into Reward
+   1/2 as well.
+2. **False docstring claim (fixed).** `qlearning_agent.py` claimed an
+   `--epsilon-decay` flag existed; it never did. Removed the claim (no decay
+   flag was added, since the paper doesn't call for one).
+3. **Price-bin look-ahead + poor resolution on heavy-tailed prices (fixed).**
+   See "Price bin method" in Deviations above -- switched to causal
+   quantile bins fit from a 30-day prefix instead of equal-width bins fit
+   from the whole series.
+4. **Data node ambiguity (open, documented, not fixed)** -- see "Data node"
+   in Deviations above. Whether `ISO NE CA` (system average) matches "Hub"
+   isn't verified.
+
+**Results, before vs. after the fixes** (same hyperparameters otherwise:
+`--n-price-bins 10 --alpha 0.5 --gamma 0.9 --epsilon 0.9 --smoothing 0.1`):
+
+| | Before (equal-width, look-ahead) | After (causal quantile bins) |
+|---|---|---|
+| Training profit, Reward 1 (2016) | -$777.70 | -$430.49 |
+| Training profit, Reward 2 (2016) | -$558.13 | **+$412.68** |
+| Held-out profit, Reward 1 (2017) | +$4,078.26 | +$6,168.60 |
+| Held-out profit, Reward 2 (2017) | +$5,416.05 | **+$15,801.46** |
+
+Fixing the price-bin look-ahead/resolution issue alone flipped Reward 2's
+training-time result from a loss to a genuine profit (matching the paper's
+qualitative claim that Reward 2, unlike Reward 1, is profitable *during*
+online training), and widened the Reward 2-over-Reward 1 margin on held-out
+2017 from 1.3x to 2.6x -- much closer to the paper's own emphatic gap
+(4.8x-8.6x in its baseline comparison, Sec. IV-C) even though the paper's own
+absolute figure (~$28k on 2016) still isn't matched, which is expected given
+M, eta, and the training regime (number of passes) are never given numeric
+values in the paper.
+
 - The downloaded 2016 price series visually reproduces paper Fig. 1's shape
   closely: a flat ~$20-50/MWh baseline with sparse sharp spikes and one
   dramatic outlier (here, ~$1439/MWh), both around a similar relative
@@ -158,8 +224,9 @@ Ran end-to-end on the real 2016/2017 series with default hyperparameters
   in a way Reward 2 doesn't specially account for.
 
 **Next step if you want to chase the paper's exact magnitude**: sweep
-`--n-price-bins` and `--smoothing`, and consider whether more than one pass
-over 2016 (the paper's Algorithm 1 doesn't state number of episodes/passes
-either) is needed before judging convergence -- right now `train.py` does
-exactly one linear pass through the series, matching the paper's literal
-"online" framing but not necessarily its total amount of learning.
+`--n-price-bins`, `--smoothing`, and `--bin-calibration-hours`, and consider
+whether more than one pass over 2016 (the paper's Algorithm 1 doesn't state
+number of episodes/passes either) is needed before judging convergence --
+right now `train.py` does exactly one linear pass through the series,
+matching the paper's literal "online" framing but not necessarily its total
+amount of learning.

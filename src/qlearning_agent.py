@@ -15,8 +15,6 @@ training; this looks unusual for a policy meant to be deployed, but it's what
 Algorithm 1 literally states, and evaluate.py always runs the FINAL Q-table
 purely greedily (eps=0) regardless of the epsilon used during training, so
 training-time exploration doesn't leak into the reported evaluation policy.
-An optional linear decay is available (--epsilon-decay) but off by default to
-match the paper.
 """
 
 import numpy as np

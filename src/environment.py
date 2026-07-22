@@ -6,6 +6,18 @@ action space collapses to exactly three choices -- charge at the maximum
 feasible rate, hold, or discharge at the maximum feasible rate. This is what
 makes tabular Q-learning over a small (price bin, energy bin) state space
 tractable.
+
+Price-bin fit source (`bin_fit_prices`): earlier versions of this environment
+defaulted to fitting price_bin_edges from the FULL price series passed to the
+constructor, meaning the discretization silently "knew" the whole year's
+price range (including future spikes) from hour 0 -- inconsistent with the
+paper's own framing that the storage "does not have a priori knowledge of
+[future] prices" (Sec. III intro). Callers (train.py) now pass a causal
+prefix (e.g. the first `--bin-calibration-hours` of the series) as
+`bin_fit_prices` so the edges reflect only data available by the time
+training starts. Passing nothing still falls back to fitting from the full
+`prices` array, kept for quick synthetic/smoke-test use where causality
+doesn't matter.
 """
 
 import numpy as np
@@ -42,6 +54,8 @@ class StorageArbitrageEnv:
         efficiency_discharge=1.0,
         n_price_bins=10,
         price_bin_edges=None,
+        price_bin_method="quantile",
+        bin_fit_prices=None,
         initial_energy=0.0,
     ):
         self.prices = np.asarray(prices, dtype=float)
@@ -63,11 +77,43 @@ class StorageArbitrageEnv:
         if price_bin_edges is not None:
             self.price_bin_edges = np.asarray(price_bin_edges, dtype=float)
         else:
-            self.price_bin_edges = np.linspace(self.prices.min(), self.prices.max(), n_price_bins + 1)
+            fit_source = bin_fit_prices if bin_fit_prices is not None else self.prices
+            self.price_bin_edges = self.fit_price_bin_edges(fit_source, n_price_bins, price_bin_method)
         self.n_price_bins = len(self.price_bin_edges) - 1
 
         self.t = 0
         self.energy = initial_energy
+
+    @staticmethod
+    def fit_price_bin_edges(prices, n_price_bins, method="quantile"):
+        """"M even price intervals from the lowest to the highest" (Sec.
+        III-A) reads most literally as equal-WIDTH bins (method="equal_width"),
+        but real-time prices are heavy-tailed (2016 ISO-NE: -$156 to +$1439,
+        with the bulk of hours clustered in $10-60) -- equal-width bins spend
+        most of the state space on rarely-visited spike territory and crush
+        the everyday price range, where most arbitrage opportunity actually
+        lives, into 1-2 bins. method="quantile" (equal-FREQUENCY bins, the
+        default here) fixes that resolution problem; it's a deviation from
+        the paper's literal wording but a defensible one given M is never
+        numerically specified anyway.
+        """
+        prices = np.asarray(prices, dtype=float)
+        if method == "equal_width":
+            return np.linspace(prices.min(), prices.max(), n_price_bins + 1)
+        if method == "quantile":
+            edges = np.quantile(prices, np.linspace(0, 1, n_price_bins + 1))
+            edges[0], edges[-1] = prices.min(), prices.max()
+            return np.unique(edges) if len(np.unique(edges)) >= 2 else np.linspace(prices.min(), prices.max() + 1, n_price_bins + 1)
+        raise ValueError(f"Unknown price_bin_method: {method!r}")
+
+    def true_profit(self, price, c, d):
+        """Per-step term of the AMP objective (Sec. II): p_t * (eta_d*d_t -
+        c_t/eta_c). This is the economically correct profit regardless of
+        which reward function (Reward 1/2, Sec. III-C) is used to train the
+        Q-table -- those omit efficiency from the shaping signal (see
+        src/rewards.py), but the reported profit shouldn't.
+        """
+        return price * (self.eta_d * d - c / self.eta_c)
 
     def max_rate_mw_gcd(self):
         # Charge and discharge rates are equal in this paper's case study;

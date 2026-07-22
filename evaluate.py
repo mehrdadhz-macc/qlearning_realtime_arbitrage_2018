@@ -28,9 +28,11 @@ def latest_run_dir():
     return runs[-1]
 
 
-def greedy_rollout(prices, q_table, capacity_mwh, max_rate_mw, price_bin_edges):
+def greedy_rollout(prices, q_table, capacity_mwh, max_rate_mw, price_bin_edges,
+                    efficiency_charge=1.0, efficiency_discharge=1.0):
     env = StorageArbitrageEnv(prices, capacity_mwh=capacity_mwh, max_rate_mw=max_rate_mw,
-                               price_bin_edges=price_bin_edges)
+                               price_bin_edges=price_bin_edges,
+                               efficiency_charge=efficiency_charge, efficiency_discharge=efficiency_discharge)
     agent = QLearningAgent(env.n_price_bins, env.n_energy_bins, epsilon=0.0)
     agent.q = q_table
 
@@ -41,7 +43,7 @@ def greedy_rollout(prices, q_table, capacity_mwh, max_rate_mw, price_bin_edges):
     while not done:
         action = agent.select_action(state, greedy=True)
         next_state, price, c, d, c_tilde, d_tilde, done = env.step(action)
-        cumulative_profit += -price * c + price * d
+        cumulative_profit += env.true_profit(price, c, d)  # AMP objective (Sec. II)
         curve.append(cumulative_profit)
         state = next_state
     return np.array(curve)
@@ -53,6 +55,10 @@ def main():
     parser.add_argument("--data", default="data/test/isone_rt_hourly_lmp_2017.csv")
     parser.add_argument("--capacity-mwh", type=float, default=8.0)
     parser.add_argument("--max-rate-mw", type=float, default=1.0)
+    parser.add_argument("--efficiency-charge", type=float, default=1.0,
+                         help="Must match the value train.py was run with for a coherent comparison")
+    parser.add_argument("--efficiency-discharge", type=float, default=1.0,
+                         help="Must match the value train.py was run with for a coherent comparison")
     args = parser.parse_args()
 
     run_dir = Path(args.run) if args.run else latest_run_dir()
@@ -73,7 +79,8 @@ def main():
         # nearest edge bin (StorageArbitrageEnv.price_bin), which is
         # expected, imperfect-but-safe behavior for out-of-distribution
         # prices rather than a crash.
-        curve = greedy_rollout(prices, q_table, args.capacity_mwh, args.max_rate_mw, price_bin_edges)
+        curve = greedy_rollout(prices, q_table, args.capacity_mwh, args.max_rate_mw, price_bin_edges,
+                                args.efficiency_charge, args.efficiency_discharge)
         curves[reward_kind] = curve
         print(f"  {reward_kind}: held-out cumulative profit = ${curve[-1]:,.2f}")
 
