@@ -41,45 +41,74 @@ numbers to the dollar:
 
 ```
 venv/bin/pip install -r requirements.txt
-venv/bin/python3 scripts/data_generation/download_isone_data.py
+
+venv/bin/python3 scripts/data_generation/download_isone_data.py    # 1/3: fetch the original files
+venv/bin/python3 scripts/data_generation/preprocess_isone_data.py  # 2/3: extract + clean into one series
+venv/bin/python3 scripts/data_generation/split_train_test.py       # 3/3: split by year
 ```
 
-No account or credentials needed. The data comes from ISO-NE's public yearly
-"SMD Hourly Data" archive files (`RT_LMP` column of the `ISO NE CA` sheet),
-not the Web Services API:
+No account or credentials needed -- these are public static files, not the
+Web Services API (see "Why not the Web Services API" below). Three separate
+stages, each leaving its own artifact on disk so you can inspect or redo any
+one of them independently:
 
-    2016: https://www.iso-ne.com/static-assets/documents/2016/02/smd_hourly.xls
-    2017: https://www.iso-ne.com/static-assets/documents/2017/02/2017_smd_hourly.xlsx
+1. **`download_isone_data.py`** fetches ISO-NE's own yearly "SMD Hourly Data"
+   workbooks **byte-for-byte, untouched**, into `data/raw/2016_smd_hourly.xls`
+   / `data/raw/2017_smd_hourly.xlsx` (skips re-downloading if already
+   present). Also writes `data/raw/DATA_SOURCE.txt` -- a plain-text guide to
+   where this data comes from, the direct URLs, and how to find the same
+   report by hand on iso-ne.com's own website (`data/raw/*` is gitignored
+   since it's downloaded data, but `DATA_SOURCE.txt` is a small static
+   reference doc, so it's checked in despite living in that directory).
 
-**Why not the Web Services API** (what this script originally used, and what
+        2016: https://www.iso-ne.com/static-assets/documents/2016/02/smd_hourly.xls
+        2017: https://www.iso-ne.com/static-assets/documents/2017/02/2017_smd_hourly.xlsx
+
+2. **`preprocess_isone_data.py`** reads those raw workbooks, pulls the
+   `ISO NE CA` sheet's `RT_LMP` column (the Trading Hub price -- see Data
+   Source below), builds a proper hourly timestamp, combines both years, and
+   validates the result (checks: no duplicate timestamps, no missing values,
+   strictly hourly spacing, row counts match the expected 8784/8760 for
+   leap/non-leap years) before writing
+   `data/raw/isone_rt_hourly_lmp_2016_2017_clean.csv`. "Clean" means
+   standardized columns and validated structure, not re-deriving ISO-NE's
+   own RT_LMP figures -- the March 2017 convention change and DST-hour
+   synthesis (see caveats above) are passed through as-is.
+
+3. **`split_train_test.py`** splits that clean CSV by calendar year into
+   `data/train/isone_rt_hourly_lmp_2016.csv` and
+   `data/test/isone_rt_hourly_lmp_2017.csv`.
+
+**Why not the Web Services API** (what stage 1 originally used, and what
 requires a registered account): tested live against `/hourlylmp/rt/final/day/
 {day}/location/{id}` -- authentication and Hub-location auto-detection both
 worked (resolved to ID 4000, `.H.INTERNAL_HUB`, exactly as guessed), and it
 does return real data for recent dates (verified back to mid-2018), but every
 2016/2017 date tried came back with an empty `HourlyLmp` list. That
 endpoint's historical retention doesn't reach the years this paper needs, so
-this script instead uses ISO-NE's own bulk archive files for exactly that
+stage 1 instead uses ISO-NE's own bulk archive files for exactly that
 situation.
 
-The script caches each year's raw downloaded file under
-`data/raw/isone_cache/`, writes the combined series to
-`data/raw/isone_rt_hourly_lmp_2016_2017.csv`, and writes
-`data/train/isone_rt_hourly_lmp_2016.csv` / `data/test/isone_rt_hourly_lmp_2017.csv`.
-Verified: 8784 rows for 2016 (leap year), 8760 for 2017, zero missing
-`RT_LMP` values in either (`Hr_End` always runs 1..24, see the DST note
-above for why). `outputs/data_plots/` shows the same flat-baseline-with-
-sparse-spikes pattern as paper Fig. 1 (confirmed -- see Known findings
-below). Only 2016/2017 URLs are hardcoded; pass `--years`/`--url` to point
-at a different year if ISO-NE publishes it in the same format.
+Only 2016/2017 URLs are hardcoded in stage 1; pass `--years`/`--url` to
+point at a different year if ISO-NE publishes it in the same format.
+`outputs/data_plots/` shows the same flat-baseline-with-sparse-spikes
+pattern as paper Fig. 1 (confirmed -- see Known findings below).
 
 ## Project structure
 
 ```
 scripts/
   data_generation/
-    download_isone_data.py   # real ISO-NE data from the public SMD Hourly Data archive
+    download_isone_data.py     # 1/3: fetch original workbooks -> data/raw/
+    preprocess_isone_data.py   # 2/3: extract + clean -> data/raw/*_clean.csv
+    split_train_test.py        # 3/3: split by year -> data/train/, data/test/
   data_plots/
-    plot_price_series.py     # Fig. 1 style raw + moving-average price plot
+    plot_price_series.py       # Fig. 1 style raw + moving-average price plot
+
+data/
+  raw/     original workbooks, DATA_SOURCE.txt, and the cleaned combined CSV
+  train/   isone_rt_hourly_lmp_2016.csv
+  test/    isone_rt_hourly_lmp_2017.csv
 
 src/
   data_loader.py       # load a price CSV

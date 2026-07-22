@@ -16,9 +16,11 @@ build/
 # Claude Code local settings
 .claude/
 
-# Data files (downloaded locally, not tracked)
+# Data files (downloaded/derived locally, not tracked) -- DATA_SOURCE.txt is
+# the one exception, it's a small static reference doc, not downloaded data.
 data/raw/*
 !data/raw/.gitkeep
+!data/raw/DATA_SOURCE.txt
 data/train/*.csv
 data/test/*.csv
 

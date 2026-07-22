@@ -1,0 +1,51 @@
+ISO-NE HOURLY REAL-TIME LMP -- DATA SOURCE
+===========================================
+
+WHAT THIS IS
+------------
+Hourly Day-Ahead and Real-Time locational marginal price (LMP), demand,
+weather, and regulation-market data for ISO New England, published by ISO-NE
+as yearly "SMD Hourly Data" Excel workbooks. This project uses the RT_LMP
+column of the "ISO NE CA" sheet, which -- per the workbook's OWN embedded
+"Notes" sheet -- is explicitly the Trading Hub (.H.INTERNAL_HUB) price, not a
+separate system-wide average, despite the "CA" (Control Area) name:
+
+    "'ISO NE CA' tab contains values for the Trading Hub"
+
+DIRECT DOWNLOAD URLS (what download_isone_data.py fetches)
+------------------------------------------------------------
+    2016: https://www.iso-ne.com/static-assets/documents/2016/02/smd_hourly.xls
+    2017: https://www.iso-ne.com/static-assets/documents/2017/02/2017_smd_hourly.xlsx
+
+HOW TO FIND THIS FILE BY HAND ON THE WEBSITE
+-----------------------------------------------
+    iso-ne.com -> ISO Express -> Energy, Load, and Demand Reports -> Zonal Information
+
+    Direct page: https://www.iso-ne.com/isoexpress/web/reports/load-and-demand/-/tree/zone-info
+
+    Look for the "SMD Hourly Data" report template. No account/login is
+    needed, but downloading through that web page's interface requires
+    solving a CAPTCHA. The direct URLs above point at the same files without
+    that CAPTCHA step (presumably intended for the report-viewer page's own
+    use, but reachable directly).
+
+CAVEATS (from the workbook's own "Notes" sheet -- read it yourself with
+`pd.ExcelFile(path).parse("Notes", header=None)` for the full text)
+------------------------------------------------------------------------
+- RT_LMP's definition changed mid-series: "starting on March 1, 2017, this
+  is the hourly average of the five-minute LMP in the hour." Real-time
+  prices actually clear every 5 minutes; the hourly figure is a derived
+  average. The pre-March-2017 convention isn't stated, so 2016 data and the
+  Jan-Feb 2017 slice of 2017 aren't guaranteed to be computed identically to
+  the rest of 2017.
+- "Final" isn't permanent: "Hourly settlement values are subject to
+  re-settlement by the ISO. Revised data may be posted at any time."
+- DST transition hours are synthesized, not raw metered data: the March
+  "missing" hour and the November "duplicate" hour are each built by
+  averaging their two neighboring real hours.
+
+PIPELINE (this project)
+------------------------
+    1. scripts/data_generation/download_isone_data.py     -> data/raw/{year}_smd_hourly.{ext} (this file's siblings)
+    2. scripts/data_generation/preprocess_isone_data.py    -> data/raw/isone_rt_hourly_lmp_2016_2017_clean.csv
+    3. scripts/data_generation/split_train_test.py         -> data/train/, data/test/
