@@ -16,9 +16,6 @@ build/
 # Claude Code local settings
 .claude/
 
-# Credentials
-.env
-
 # Data files (downloaded locally, not tracked)
 data/raw/*
 !data/raw/.gitkeep

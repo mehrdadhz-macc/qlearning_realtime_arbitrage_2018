@@ -14,44 +14,50 @@ data, while a reward relative to a moving-average price (**Reward 2**) does.
 
 ## Data
 
-Real ISO-NE hourly real-time LMP at the system Hub, Jan 1 2016 - Dec 31 2017
-(the paper's own range; its headline result, Fig. 4, uses 2016 alone).
+Real ISO-NE hourly real-time LMP for the system ("ISO NE CA") control area,
+Jan 1 2016 - Dec 31 2017 (the paper's own range; its headline result, Fig. 4,
+uses 2016 alone).
 
 ```
 venv/bin/pip install -r requirements.txt
-
-export ISONE_WS_USER=you@example.com
-export ISONE_WS_PASSWORD=your_password
 venv/bin/python3 scripts/data_generation/download_isone_data.py
 ```
 
-Credentials: free ISO Express account, then request Web Services access at
-https://www.iso-ne.com/isoexpress/ -> "Web Services" (unlike PJM's Data
-Miner 2, ISO-NE's public LMP data itself is free, but the API needs
-registered Web Services credentials, not just a plain account login).
+No account or credentials needed. The data comes from ISO-NE's public yearly
+"SMD Hourly Data" archive files (`RT_LMP` column of the `ISO NE CA` sheet),
+not the Web Services API:
 
-The script caches each day's raw response under `data/raw/isone_cache/`
-(safe to re-run -- only missing days are re-fetched), writes the combined
-series to `data/raw/isone_rt_hourly_lmp_2016_2017.csv`, and splits it by
-calendar year into `data/train/isone_rt_hourly_lmp_2016.csv` and
-`data/test/isone_rt_hourly_lmp_2017.csv`.
+    2016: https://www.iso-ne.com/static-assets/documents/2016/02/smd_hourly.xls
+    2017: https://www.iso-ne.com/static-assets/documents/2017/02/2017_smd_hourly.xlsx
 
-**I could not test this script against a live account** (no credentials
-available while scaffolding this repo), so treat the Hub-location
-auto-detection as best-effort: it queries `/locations/all.json` and looks for
-a "HUB" entry, falling back to the commonly-cited Hub ID 4000 if that lookup
-doesn't match ISO-NE's actual response shape. The script prints whatever
-location it resolves -- **confirm that line says "HUB" before trusting the
-downloaded prices**, and use `--inspect-only 20160104` to dump one raw day's
-JSON if you need to adjust the parsing in `resolve_hub_location()` /
-`parse_day()`.
+**Why not the Web Services API** (what this script originally used, and what
+requires a registered account): tested live against `/hourlylmp/rt/final/day/
+{day}/location/{id}` -- authentication and Hub-location auto-detection both
+worked (resolved to ID 4000, `.H.INTERNAL_HUB`, exactly as guessed), and it
+does return real data for recent dates (verified back to mid-2018), but every
+2016/2017 date tried came back with an empty `HourlyLmp` list. That
+endpoint's historical retention doesn't reach the years this paper needs, so
+this script instead uses ISO-NE's own bulk archive files for exactly that
+situation.
+
+The script caches each year's raw downloaded file under
+`data/raw/isone_cache/`, writes the combined series to
+`data/raw/isone_rt_hourly_lmp_2016_2017.csv`, and writes
+`data/train/isone_rt_hourly_lmp_2016.csv` / `data/test/isone_rt_hourly_lmp_2017.csv`.
+Verified: 8784 rows for 2016 (leap year), 8760 for 2017, zero missing
+`RT_LMP` values in either. Each day uses a fixed `Hr_End` = 1..24 convention
+(always 24 hours, including DST transition days), so `outputs/data_plots/`
+should show the same flat-baseline-with-sparse-spikes pattern as paper Fig. 1
+(confirmed -- see Known findings below). Only 2016/2017 URLs are hardcoded;
+pass `--years`/`--url` to point at a different year if ISO-NE publishes it in
+the same format.
 
 ## Project structure
 
 ```
 scripts/
   data_generation/
-    download_isone_data.py   # real ISO-NE data via the official Web Services API
+    download_isone_data.py   # real ISO-NE data from the public SMD Hourly Data archive
   data_plots/
     plot_price_series.py     # Fig. 1 style raw + moving-average price plot
 
@@ -124,11 +130,36 @@ differently-defined state bins would silently read the wrong table entries.
   that paper directly rather than guessing its threshold rule from a
   secondary description.
 
-## Status
+## Known findings from this replication
 
-Pipeline is smoke-tested end-to-end on synthetic data (no real ISO-NE
-credentials were available while scaffolding this repo) -- training runs,
-Reward 1/Reward 2 produce different behavior, evaluation runs on a held-out
-series without crashing, and the price plot renders. It has **not** been run
-against the real ISO-NE series yet; do that before trusting any profit
-numbers as a genuine replication result.
+Ran end-to-end on the real 2016/2017 series with default hyperparameters
+(`--n-price-bins 10 --alpha 0.5 --gamma 0.9 --epsilon 0.9 --smoothing 0.1`):
+
+- Training (online, on 2016): both rewards net *negative* cumulative profit
+  (Reward 1: -$778, Reward 2: -$558) -- unlike the paper's own reported
+  training-time result (~+$28k for Reward 2 on an 8MWh/1MW battery). Given
+  how many of the paper's own hyperparameters aren't numerically specified
+  (price bin count, Reward 2's smoothing constant -- see Deviations above),
+  this isn't surprising; it means our particular defaults haven't found a
+  profitable policy within one pass over 2016, not that the approach itself
+  is broken.
+- Held-out evaluation (frozen greedy policy replayed on 2017, which the
+  paper itself never does): **both rewards turn positive, and Reward 2 beats
+  Reward 1** (Reward 1: +$4,078, Reward 2: +$5,416) -- which does match the
+  paper's central qualitative claim (Reward 2 > Reward 1) even though the
+  training-time numbers above don't match its magnitude.
+- The downloaded 2016 price series visually reproduces paper Fig. 1's shape
+  closely: a flat ~$20-50/MWh baseline with sparse sharp spikes and one
+  dramatic outlier (here, ~$1439/MWh), both around a similar relative
+  position in the year. See `outputs/data_plots/isone_rt_hourly_lmp_2016.png`.
+- 2016 real-time prices include negative values (min -$156.04/MWh) --
+  expected for real-time LMP, but worth knowing since it means Reward 1's
+  "charge = pay the spot price" can occasionally be a *reward*, not a cost,
+  in a way Reward 2 doesn't specially account for.
+
+**Next step if you want to chase the paper's exact magnitude**: sweep
+`--n-price-bins` and `--smoothing`, and consider whether more than one pass
+over 2016 (the paper's Algorithm 1 doesn't state number of episodes/passes
+either) is needed before judging convergence -- right now `train.py` does
+exactly one linear pass through the series, matching the paper's literal
+"online" framing but not necessarily its total amount of learning.

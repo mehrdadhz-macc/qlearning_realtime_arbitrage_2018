@@ -1,222 +1,102 @@
-"""Download real ISO-NE hourly real-time LMP data via the official Web Services API.
+"""Download real ISO-NE hourly real-time LMP data for 2016-2017 (paper's date range).
 
-Paper (Wang & Zhang, 2018/2020, arXiv:1711.03127) uses hourly real-time prices
-from ISO New England, Jan 1 2016 - Dec 31 2017, at the system Hub. This script
-pulls that same series from https://webservices.iso-ne.com/api/v1.1.
+Paper (Wang & Zhang, 2018/2020, arXiv:1711.03127) uses hourly real-time
+prices from ISO New England, Jan 1 2016 - Dec 31 2017. This script pulls the
+"ISO NE CA" (system-wide control-area) sheet's RT_LMP column from ISO-NE's
+public yearly "SMD Hourly Data" archive files -- no login required:
 
-Credentials: free ISO Express account, then request Web Services access at
-https://www.iso-ne.com/isoexpress/ -> "Web Services". Provide them via env
-vars (recommended, keeps them out of shell history) or CLI flags:
+    2016: https://www.iso-ne.com/static-assets/documents/2016/02/smd_hourly.xls
+    2017: https://www.iso-ne.com/static-assets/documents/2017/02/2017_smd_hourly.xlsx
 
-    export ISONE_WS_USER=you@example.com
-    export ISONE_WS_PASSWORD=your_password
-    venv/bin/python3 scripts/data_generation/download_isone_data.py
+Why not the Web Services API (webservices.iso-ne.com), which is what the
+project's docstrings originally pointed at: I tested it against a live ISO
+Express account and its /hourlylmp/rt/final/day/{day}/location/{id} endpoint
+returns real data back to roughly July 2018, but an EMPTY HourlyLmp list for
+every date tried in 2016-2017 -- that endpoint's historical retention simply
+doesn't reach the years this paper needs. The bulk yearly files are ISO-NE's
+own historical archive for exactly this situation and cover 2016 (8784 rows,
+leap year) and 2017 (8760 rows) with no missing RT_LMP values.
 
-Each day's response is cached under data/raw/isone_cache/<YYYYMMDD>.json so a
-re-run only fetches days that are missing (interrupted runs resume cheaply,
-and we don't hammer ISO-NE's servers re-requesting data we already have).
+Each day in these files uses a fixed Hr_End = 1..24 convention (always
+exactly 24 hours/day, including on DST transition days), so there's no
+23/25-hour edge case to handle -- timestamp = Date + (Hr_End - 1) hours gives
+a clean, gap-free hourly index.
 
-NOTE on location auto-detection: this script queries /locations/all.json and
-looks for the entry whose location type / name marks it as the system Hub. I
-could not test this against a live account (no credentials available in this
-environment), so the parsing is written defensively (recursive key search
-rather than one hardcoded JSON path) and falls back to location ID 4000 -- a
-value widely cited elsewhere as ISO-NE's Hub ID (".H.INTERNAL_HUB") -- if
-auto-detection doesn't match the response shape. The script prints whatever
-location name/ID it resolves to before downloading; verify that line says
-"HUB" before trusting the output. Override with --location-id if it guesses
-wrong. Use --inspect-only to dump one raw day's JSON and exit, which is the
-fastest way to fix the parser if ISO-NE's schema differs from what's assumed
-here.
+Only years 2016 and 2017 have a known URL here (KNOWN_YEAR_URLS below); pass
+--url to point at a different year's file ISO-NE publishes in the same
+"SMD Hourly Data" format if you want to extend the range later.
 """
 
 import argparse
-import json
-import os
-import time
-from datetime import date, timedelta
+from io import BytesIO
 from pathlib import Path
 
 import pandas as pd
 import requests
-from tqdm import tqdm
 
-API_BASE = "https://webservices.iso-ne.com/api/v1.1"
-FALLBACK_HUB_LOCATION_ID = 4000
-FALLBACK_HUB_LOCATION_NAME = ".H.INTERNAL_HUB"
+KNOWN_YEAR_URLS = {
+    2016: "https://www.iso-ne.com/static-assets/documents/2016/02/smd_hourly.xls",
+    2017: "https://www.iso-ne.com/static-assets/documents/2017/02/2017_smd_hourly.xlsx",
+}
 
-
-def _auth_from_env_or_args(args):
-    user = args.user or os.environ.get("ISONE_WS_USER")
-    password = args.password or os.environ.get("ISONE_WS_PASSWORD")
-    if not user or not password:
-        raise SystemExit(
-            "Missing ISO-NE Web Services credentials.\n"
-            "Register a free ISO Express account and request Web Services access at "
-            "https://www.iso-ne.com/isoexpress/, then set:\n"
-            "  export ISONE_WS_USER=you@example.com\n"
-            "  export ISONE_WS_PASSWORD=your_password\n"
-            "or pass --user / --password."
-        )
-    return (user, password)
+SHEET_NAME = "ISO NE CA"  # system-wide control-area sheet (as opposed to per-state sheets)
 
 
-def _find_values_by_key(obj, target_keys):
-    """Recursively yield values for any of target_keys found anywhere in obj."""
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if k in target_keys:
-                yield k, v
-            yield from _find_values_by_key(v, target_keys)
-    elif isinstance(obj, list):
-        for item in obj:
-            yield from _find_values_by_key(item, target_keys)
+def download_year(year, url=None, cache_dir=Path("data/raw/isone_cache")):
+    url = url or KNOWN_YEAR_URLS.get(year)
+    if url is None:
+        raise SystemExit(f"No known SMD Hourly Data URL for {year}; pass --url explicitly.")
 
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / f"{year}_smd_hourly{Path(url).suffix}"
 
-def _find_dicts_with_keys(obj, required_keys):
-    """Recursively yield dicts that contain all of required_keys."""
-    if isinstance(obj, dict):
-        if required_keys.issubset(obj.keys()):
-            yield obj
-        for v in obj.values():
-            yield from _find_dicts_with_keys(v, required_keys)
-    elif isinstance(obj, list):
-        for item in obj:
-            yield from _find_dicts_with_keys(item, required_keys)
-
-
-def resolve_hub_location(session, auth, override_id=None):
-    if override_id is not None:
-        print(f"Using --location-id override: {override_id}")
-        return override_id
-
-    url = f"{API_BASE}/locations/all.json"
-    try:
-        resp = session.get(url, auth=auth, timeout=30)
+    if cache_file.exists():
+        print(f"{year}: using cached {cache_file}")
+        content = cache_file.read_bytes()
+    else:
+        print(f"{year}: downloading {url}")
+        resp = requests.get(url, timeout=120)
         resp.raise_for_status()
-        payload = resp.json()
-    except Exception as exc:  # noqa: BLE001 - best-effort discovery, see module docstring
-        print(f"Location lookup failed ({exc}); falling back to hardcoded Hub ID "
-              f"{FALLBACK_HUB_LOCATION_ID} ({FALLBACK_HUB_LOCATION_NAME}).")
-        return FALLBACK_HUB_LOCATION_ID
+        content = resp.content
+        cache_file.write_bytes(content)
 
-    candidates = list(_find_dicts_with_keys(payload, {"LocationID"}))
-    for cand in candidates:
-        name = str(cand.get("LocationName", "")).upper()
-        loc_type = str(cand.get("LocationType", "")).upper()
-        if "HUB" in name or "HUB" in loc_type:
-            print(f"Resolved Hub location: ID={cand['LocationID']} name={cand.get('LocationName')}")
-            return cand["LocationID"]
-
-    print(f"Could not find a HUB entry among {len(candidates)} locations returned; "
-          f"falling back to hardcoded Hub ID {FALLBACK_HUB_LOCATION_ID} "
-          f"({FALLBACK_HUB_LOCATION_NAME}). Run with --inspect-only to see the raw "
-          f"locations response and adjust resolve_hub_location() if needed.")
-    return FALLBACK_HUB_LOCATION_ID
-
-
-def fetch_day(session, auth, day_str, location_id):
-    url = f"{API_BASE}/hourlylmp/rt/final/day/{day_str}/location/{location_id}.json"
-    resp = session.get(url, auth=auth, timeout=30)
-    resp.raise_for_status()
-    return resp.json()
-
-
-def parse_day(payload):
-    """Extract (timestamp, lmp_total) pairs from one day's response, defensively."""
-    records = list(_find_dicts_with_keys(payload, {"BeginDate", "LmpTotal"}))
-    rows = []
-    for rec in records:
-        rows.append({"timestamp": rec["BeginDate"], "lmp_total": float(rec["LmpTotal"])})
-    return rows
-
-
-def daterange(start, end):
-    d = start
-    while d <= end:
-        yield d
-        d += timedelta(days=1)
+    df = pd.read_excel(BytesIO(content), sheet_name=SHEET_NAME, header=0)
+    df["timestamp"] = pd.to_datetime(df["Date"]) + pd.to_timedelta(df["Hr_End"].astype(int) - 1, unit="h")
+    out = df[["timestamp", "RT_LMP"]].rename(columns={"RT_LMP": "lmp_total"})
+    out = out.sort_values("timestamp").reset_index(drop=True)
+    return out
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--start", default="2016-01-01", help="Start date, YYYY-MM-DD (default: 2016-01-01)")
-    parser.add_argument("--end", default="2017-12-31", help="End date, YYYY-MM-DD (default: 2017-12-31)")
-    parser.add_argument("--user", default=None, help="ISO-NE Web Services username (or set ISONE_WS_USER)")
-    parser.add_argument("--password", default=None, help="ISO-NE Web Services password (or set ISONE_WS_PASSWORD)")
-    parser.add_argument("--location-id", type=int, default=None, help="Skip auto-detection and use this location ID")
+    parser.add_argument("--years", type=int, nargs="+", default=[2016, 2017])
+    parser.add_argument("--url", default=None, help="Override the source URL (only meaningful with a single --years value)")
     parser.add_argument("--out-dir", default="data", help="Base output directory (default: data)")
-    parser.add_argument("--request-delay", type=float, default=0.15, help="Seconds between requests (default: 0.15)")
-    parser.add_argument("--inspect-only", metavar="YYYYMMDD", default=None,
-                         help="Fetch and pretty-print one day's raw JSON, then exit (no CSV written)")
     args = parser.parse_args()
 
-    auth = _auth_from_env_or_args(args)
-    session = requests.Session()
-
     out_base = Path(args.out_dir)
-    cache_dir = out_base / "raw" / "isone_cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    year_to_split = {2016: "train", 2017: "test"}
+    all_frames = []
 
-    if args.inspect_only:
-        location_id = resolve_hub_location(session, auth, args.location_id)
-        payload = fetch_day(session, auth, args.inspect_only, location_id)
-        print(json.dumps(payload, indent=2)[:5000])
-        return
+    for year in args.years:
+        url = args.url if (args.url and len(args.years) == 1) else None
+        df = download_year(year, url=url)
+        print(f"  {year}: {len(df)} rows, {df['timestamp'].min()} -> {df['timestamp'].max()}, "
+              f"mean ${df['lmp_total'].mean():.2f}/MWh")
+        all_frames.append(df)
 
-    location_id = resolve_hub_location(session, auth, args.location_id)
+        split = year_to_split.get(year)
+        if split:
+            split_path = out_base / split / f"isone_rt_hourly_lmp_{year}.csv"
+            split_path.parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(split_path, index=False)
+            print(f"    -> {split_path}")
 
-    start = date.fromisoformat(args.start)
-    end = date.fromisoformat(args.end)
-    days = list(daterange(start, end))
-
-    all_rows = []
-    n_fetched, n_cached, n_failed = 0, 0, 0
-    for d in tqdm(days, desc="Downloading ISO-NE hourly RT LMP"):
-        day_str = d.strftime("%Y%m%d")
-        cache_file = cache_dir / f"{day_str}.json"
-
-        if cache_file.exists():
-            payload = json.loads(cache_file.read_text())
-            n_cached += 1
-        else:
-            try:
-                payload = fetch_day(session, auth, day_str, location_id)
-            except requests.HTTPError as exc:
-                print(f"\n  {day_str}: HTTP error {exc}, skipping")
-                n_failed += 1
-                continue
-            except Exception as exc:  # noqa: BLE001
-                print(f"\n  {day_str}: {exc}, skipping")
-                n_failed += 1
-                continue
-            cache_file.write_text(json.dumps(payload))
-            n_fetched += 1
-            time.sleep(args.request_delay)
-
-        all_rows.extend(parse_day(payload))
-
-    if not all_rows:
-        raise SystemExit("No data parsed from any day's response. Run with --inspect-only "
-                          "on a known-good date to check the response shape.")
-
-    df = pd.DataFrame(all_rows)
-    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=False)
-    df = df.sort_values("timestamp").drop_duplicates(subset="timestamp").reset_index(drop=True)
-
-    raw_path = out_base / "raw" / f"isone_rt_hourly_lmp_{start.year}_{end.year}.csv"
-    df.to_csv(raw_path, index=False)
-
-    print(f"\nFetched {n_fetched} days new, {n_cached} from cache, {n_failed} failed.")
-    print(f"Total rows: {len(df)}. Wrote combined raw series to {raw_path}")
-
-    for year, split in ((2016, "train"), (2017, "test")):
-        year_df = df[df["timestamp"].dt.year == year]
-        if year_df.empty:
-            continue
-        split_path = out_base / split / f"isone_rt_hourly_lmp_{year}.csv"
-        year_df.to_csv(split_path, index=False)
-        print(f"  {split}: {len(year_df)} rows -> {split_path}")
+    combined = pd.concat(all_frames, ignore_index=True).sort_values("timestamp")
+    raw_path = out_base / "raw" / f"isone_rt_hourly_lmp_{min(args.years)}_{max(args.years)}.csv"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    combined.to_csv(raw_path, index=False)
+    print(f"\nWrote combined series ({len(combined)} rows) to {raw_path}")
 
 
 if __name__ == "__main__":
