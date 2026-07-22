@@ -304,12 +304,44 @@ not as two exact numbers to reproduce.)
 Fixing the price-bin look-ahead/resolution issue alone flipped Reward 2's
 training-time result from a loss to a genuine profit (matching the paper's
 qualitative claim that Reward 2, unlike Reward 1, is profitable *during*
-online training), and widened the Reward 2-over-Reward 1 margin on held-out
-2017 from 1.3x to 2.6x -- much closer to the paper's own emphatic gap
-(4.8x-8.6x in its baseline comparison, Sec. IV-C) even though the paper's own
-absolute figure (~$28k on 2016) still isn't matched, which is expected given
-M, eta, and the training regime (number of passes) are never given numeric
-values in the paper.
+online training). The single-trial held-out margin (1.3x, then 2.6x after
+the fix) turned out to be an artifact of small sample size -- see the
+100-trial result immediately below, which supersedes it.
+
+**100-trial result (the one to trust): Reward 2's advantage is real during
+training, but does not hold up on held-out data.** Ran `--n-trials 100
+--seed 42` (same hyperparameters as above) and compared Reward 1 vs. Reward
+2 with a *paired* test -- each trial index uses the same generated seed for
+both reward kinds, so the comparison isn't contaminated by unrelated
+exploration luck:
+
+| | Reward 1 | Reward 2 | paired diff (R2-R1) | paired t-stat | R2 wins |
+|---|---|---|---|---|---|
+| Training (2016) | mean $1,222.54, std $2,000.27 | mean $2,137.26, std $2,095.86 | mean +$914.72, std $912.81 | **t=9.97** (highly significant) | 83/100 |
+| Held-out (2017) | mean $8,361.82, std $4,786.88 | mean $7,041.94, std $6,406.44 | mean -$1,319.88, std $8,225.41 | **t=-1.60** (not significant, needs \|t\|>1.98) | 47/100 |
+
+During training, Reward 2's edge is large, consistent, and statistically
+solid -- matches the paper. On the held-out year, the mean actually *flips*
+in Reward 1's favor, the difference is statistically indistinguishable from
+noise, and Reward 2 wins fewer than half the paired trials. Reward 2 also
+has substantially higher held-out variance (std $6,406 vs. $4,787) -- some
+trials generalize extremely well (+$21,952), others badly (-$10,558), a
+spread wide enough to swamp any systematic advantage. A plausible reason
+(not confirmed further here): Reward 2's moving-average-relative shaping may
+make the learned policy more sensitive to exactly which (price, energy)
+states got visited during that trial's particular exploration trajectory,
+compared to Reward 1's plainer absolute-profit signal -- but this is a
+hypothesis, not something this project verified mechanistically.
+
+**Practical implication**: don't trust any single-trial (or even 5-trial)
+comparison between the two rewards, including earlier numbers in this
+README -- run `--n-trials` at a size like 100 before drawing a conclusion
+about which reward function is actually better on held-out data.
+
+The paper's own absolute figure (~$28k on 2016) still isn't matched by
+either reward's training-time mean, which is expected given M, eta, and the
+training regime (number of passes) are never given numeric values in the
+paper.
 
 - The downloaded 2016 price series visually reproduces paper Fig. 1's shape
   closely: a flat ~$20-50/MWh baseline with sparse sharp spikes and one
