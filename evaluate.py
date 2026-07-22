@@ -1,9 +1,16 @@
-"""Greedily evaluate a trained Q-table on a held-out price series.
+"""Greedily evaluate every trial's trained Q-table on a held-out price series.
 
 The paper itself never holds out a test year -- Fig. 4's "results" ARE the
-training run. Here we additionally freeze the learned Q-table (epsilon=0, no
-further updates) and replay it on a year the agent never trained on, which is
-a stronger and more standard check of whether the learned policy generalizes.
+training run. Here we additionally freeze each trial's learned Q-table
+(epsilon=0, no further updates) and replay it on a year the agent never
+trained on, which is a stronger and more standard check of whether the
+learned policy generalizes.
+
+train.py's --n-trials saves one Q-table per trial_NN/ subdirectory under the
+run. This script evaluates ALL of them and reports the mean +/- std held-out
+profit across trials -- the expected-value estimate, not any single trial's
+number (which, per this project's own README, can vary a lot just from the
+training seed).
 
 Usage:
     venv/bin/python3 evaluate.py --run outputs/runs/<timestamp> --data data/test/isone_rt_hourly_lmp_2017.csv
@@ -63,33 +70,67 @@ def main():
 
     run_dir = Path(args.run) if args.run else latest_run_dir()
     _, prices = load_price_series(args.data)
-    print(f"Evaluating run {run_dir} on {len(prices)} held-out hours from {args.data}")
 
-    curves = {}
-    for reward_kind in ("reward_1", "reward_2"):
-        q_path = run_dir / f"q_table_{reward_kind}.npy"
-        edges_path = run_dir / f"price_bin_edges_{reward_kind}.npy"
-        if not q_path.exists() or not edges_path.exists():
-            continue
-        q_table = np.load(q_path)
-        price_bin_edges = np.load(edges_path)
-        # Reuse the TRAINING series' bin edges, not edges refit from this
-        # held-out series -- see train.py's comment on why that matters.
-        # Test-set prices outside the train range simply clip to the
-        # nearest edge bin (StorageArbitrageEnv.price_bin), which is
-        # expected, imperfect-but-safe behavior for out-of-distribution
-        # prices rather than a crash.
-        curve = greedy_rollout(prices, q_table, args.capacity_mwh, args.max_rate_mw, price_bin_edges,
-                                args.efficiency_charge, args.efficiency_discharge)
-        curves[reward_kind] = curve
-        print(f"  {reward_kind}: held-out cumulative profit = ${curve[-1]:,.2f}")
+    trial_dirs = sorted(run_dir.glob("trial_*"))
+    if not trial_dirs:
+        raise SystemExit(f"No trial_*/ subdirectories found in {run_dir} -- this run predates "
+                          f"train.py's --n-trials support; retrain to evaluate it here.")
+    print(f"Evaluating run {run_dir} ({len(trial_dirs)} trial(s)) on "
+          f"{len(prices)} held-out hours from {args.data}")
 
     plt.figure(figsize=(9, 5))
-    for reward_kind, curve in curves.items():
-        plt.plot(curve, label=reward_kind)
+    eval_results = {}
+
+    for reward_kind in ("reward_1", "reward_2"):
+        edges_path = run_dir / f"price_bin_edges_{reward_kind}.npy"
+        if not edges_path.exists():
+            continue
+        # Reuse the TRAINING series' bin edges (shared across all trials,
+        # since fitting them doesn't depend on the seed), not edges refit
+        # from this held-out series -- see train.py's comment on why that
+        # matters. Test-set prices outside the train range simply clip to
+        # the nearest edge bin (StorageArbitrageEnv.price_bin), which is
+        # expected, imperfect-but-safe behavior for out-of-distribution
+        # prices rather than a crash.
+        price_bin_edges = np.load(edges_path)
+
+        curves = []
+        for trial_dir in trial_dirs:
+            q_path = trial_dir / f"q_table_{reward_kind}.npy"
+            if not q_path.exists():
+                continue
+            q_table = np.load(q_path)
+            curves.append(greedy_rollout(prices, q_table, args.capacity_mwh, args.max_rate_mw,
+                                          price_bin_edges, args.efficiency_charge, args.efficiency_discharge))
+        if not curves:
+            continue
+
+        curves = np.stack(curves)  # (n_trials, n_hours)
+        mean_curve = curves.mean(axis=0)
+        std_curve = curves.std(axis=0)
+        final_profits = curves[:, -1]
+        mean_profit, std_profit = float(final_profits.mean()), float(final_profits.std())
+
+        print(f"  {reward_kind}: mean held-out profit over {len(curves)} trial(s) = "
+              f"${mean_profit:,.2f} (std ${std_profit:,.2f})")
+        for i, p in enumerate(final_profits):
+            print(f"    trial {i}: ${p:,.2f}")
+
+        eval_results[reward_kind] = {
+            "n_trials": len(curves),
+            "trial_final_profits": final_profits.tolist(),
+            "mean_final_profit": mean_profit,
+            "std_final_profit": std_profit,
+        }
+
+        hours = np.arange(len(mean_curve))
+        line, = plt.plot(hours, mean_curve, label=f"{reward_kind} (mean of {len(curves)} trials)")
+        plt.fill_between(hours, mean_curve - std_curve, mean_curve + std_curve,
+                          alpha=0.2, color=line.get_color(), label=f"{reward_kind} (+/- 1 std)")
+
     plt.xlabel("Time (hour)")
     plt.ylabel("Cumulative profit ($)")
-    plt.title("Held-out evaluation (greedy policy, frozen Q-table)")
+    plt.title("Held-out evaluation -- mean +/- std across trials (greedy policy, frozen Q-tables)")
     plt.legend()
     plt.tight_layout()
 
@@ -100,8 +141,7 @@ def main():
     plt.savefig(out_path, dpi=150)
     print(f"Saved plot to {out_path}")
 
-    (run_dir / "eval_summary.json").write_text(json.dumps(
-        {"data": args.data, "results": {k: float(v[-1]) for k, v in curves.items()}}, indent=2))
+    (run_dir / "eval_summary.json").write_text(json.dumps({"data": args.data, "results": eval_results}, indent=2))
 
 
 if __name__ == "__main__":

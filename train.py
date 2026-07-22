@@ -7,8 +7,17 @@ Q-table and evaluate it greedily on a held-out year in evaluate.py -- the
 paper only ever reports in-sample training-time profit, which conflates
 learning and evaluation; a genuine held-out check is a stronger test.
 
+Q-learning's epsilon-greedy exploration is random, and (as demonstrated in
+this project's own README) that randomness swings results a lot from one
+seed to the next -- a single run's profit number is one sample, not "the"
+result. --n-trials runs several independent trials per reward kind, each
+with its own seed (seed, seed+1, seed+2, ...), saves every trial's Q-table
+separately under trial_NN/, and reports the mean and std of the profit
+across trials -- the expected-value estimate this project's results should
+actually be judged on, not any single trial's number.
+
 Usage:
-    venv/bin/python3 train.py --data data/train/isone_rt_hourly_lmp_2016.csv --reward both
+    venv/bin/python3 train.py --data data/train/isone_rt_hourly_lmp_2016.csv --reward both --n-trials 10
 """
 
 import argparse
@@ -92,7 +101,10 @@ def main():
     parser.add_argument("--efficiency-discharge", type=float, default=1.0, help="eta_d (Sec. II AMP objective)")
     parser.add_argument("--reward-efficiency-aware", action="store_true",
                          help="Fold eta_c/eta_d into Reward 1/2 too (paper's literal Sec. III-C formulas omit them)")
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=0, help="Base seed; trial i uses seed + i")
+    parser.add_argument("--n-trials", type=int, default=1,
+                         help="Independent trials per reward kind, each with its own seed; "
+                              "results are reported as mean +/- std across trials")
     parser.add_argument("--out-dir", default=None, help="Override outputs/runs/<timestamp>")
     args = parser.parse_args()
 
@@ -107,25 +119,49 @@ def main():
     summary = {"data": args.data, "n_hours": len(prices), "args": vars(args), "results": {}}
 
     for reward_kind in reward_kinds:
-        print(f"\nTraining with {reward_kind} ...")
-        agent, history, cumulative_profit, price_bin_edges = run_training(
-            prices, reward_kind, args.capacity_mwh, args.max_rate_mw, args.n_price_bins,
-            args.alpha, args.gamma, args.epsilon, args.smoothing, args.seed,
-            args.price_bin_method, args.bin_calibration_hours,
-            args.efficiency_charge, args.efficiency_discharge, args.reward_efficiency_aware,
-        )
-        print(f"  {reward_kind}: cumulative training profit = ${cumulative_profit:,.2f}")
+        print(f"\nTraining {reward_kind} -- {args.n_trials} trial(s), "
+              f"seeds {args.seed}..{args.seed + args.n_trials - 1}")
+        trial_profits = []
+        price_bin_edges = None
 
-        agent.save(run_dir / f"q_table_{reward_kind}.npy")
-        # evaluate.py must reuse these EXACT edges (fit causally from the
-        # training series' calibration prefix) on the held-out series rather
-        # than re-fitting from the test set's own range, or a raw price would
-        # map to a different bin index at eval time than it did in training.
+        for trial in range(args.n_trials):
+            seed = args.seed + trial
+            agent, history, cumulative_profit, edges = run_training(
+                prices, reward_kind, args.capacity_mwh, args.max_rate_mw, args.n_price_bins,
+                args.alpha, args.gamma, args.epsilon, args.smoothing, seed,
+                args.price_bin_method, args.bin_calibration_hours,
+                args.efficiency_charge, args.efficiency_discharge, args.reward_efficiency_aware,
+            )
+            print(f"  trial {trial} (seed={seed}): cumulative training profit = ${cumulative_profit:,.2f}")
+
+            # Every trial's own model, kept separately -- these are genuinely
+            # different Q-tables (different exploration trajectories), not
+            # redundant copies of the same thing.
+            trial_dir = run_dir / f"trial_{trial:02d}"
+            trial_dir.mkdir(parents=True, exist_ok=True)
+            agent.save(trial_dir / f"q_table_{reward_kind}.npy")
+            np.save(trial_dir / f"history_{reward_kind}.npy",
+                    np.array([(h["t"], h["price"], h["action"], h["c"], h["d"],
+                               h["profit"], h["cumulative_profit"]) for h in history]))
+            trial_profits.append(cumulative_profit)
+            price_bin_edges = edges  # identical across trials (fit_price_bin_edges takes no RNG)
+
+        mean_profit = float(np.mean(trial_profits))
+        std_profit = float(np.std(trial_profits))
+        print(f"  {reward_kind}: mean training profit over {args.n_trials} trial(s) = "
+              f"${mean_profit:,.2f} (std ${std_profit:,.2f})")
+
+        # Bin edges are a property of the price data + calibration window, not
+        # of any one trial's seed, so they're saved once per reward kind at
+        # the run level, not duplicated into every trial_NN/ directory.
         np.save(run_dir / f"price_bin_edges_{reward_kind}.npy", price_bin_edges)
-        np.save(run_dir / f"history_{reward_kind}.npy",
-                np.array([(h["t"], h["price"], h["action"], h["c"], h["d"],
-                           h["profit"], h["cumulative_profit"]) for h in history]))
-        summary["results"][reward_kind] = {"cumulative_profit": cumulative_profit}
+        summary["results"][reward_kind] = {
+            "n_trials": args.n_trials,
+            "seeds": [args.seed + t for t in range(args.n_trials)],
+            "trial_cumulative_profits": trial_profits,
+            "mean_cumulative_profit": mean_profit,
+            "std_cumulative_profit": std_profit,
+        }
 
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     print(f"\nRun artefacts written to {run_dir}")

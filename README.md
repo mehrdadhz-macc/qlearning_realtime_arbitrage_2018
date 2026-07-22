@@ -120,24 +120,39 @@ train.py      # online Q-learning over one price series (paper's own training ==
 evaluate.py   # freeze the learned Q-table, replay greedily on a held-out year (see below)
 
 outputs/
-  runs/<timestamp>/     # everything about ONE run lives here, nothing scattered elsewhere:
-                        #   q_table_*.npy, price_bin_edges_*.npy, history_*.npy, summary.json
-                        #   (written by train.py), eval_summary.json, eval_plot.png (evaluate.py)
-  data_plots/           # raw price-series plots (plot_price_series.py) -- not tied to a run
+  runs/<timestamp>/           # everything about ONE run lives here, nothing scattered elsewhere:
+    price_bin_edges_*.npy     #   shared across all trials (see Train below), summary.json (train.py)
+    summary.json              #   eval_summary.json, eval_plot.png (evaluate.py)
+    trial_00/, trial_01/, ...
+      q_table_*.npy           #   one independently-trained model per trial
+      history_*.npy
+  data_plots/                 # raw price-series plots (plot_price_series.py) -- not tied to a run
 ```
 
 ## Train
 
 ```bash
-venv/bin/python3 train.py --data data/train/isone_rt_hourly_lmp_2016.csv --reward both
+venv/bin/python3 train.py --data data/train/isone_rt_hourly_lmp_2016.csv --reward both --n-trials 10
 ```
 
-Trains both Reward 1 and Reward 2 online over the 2016 series and prints
-cumulative training profit for each (paper Fig. 4's headline comparison), now
-using the true AMP-objective profit (`env.true_profit`, Sec. II) rather than
-the shaped reward signal. Key flags: `--capacity-mwh` (default 8),
-`--max-rate-mw` (default 1, paper also reports a 2 MW case), `--n-price-bins`
-(default 10 -- **not specified numerically in the paper**),
+Trains both Reward 1 and Reward 2 online over the 2016 series. Q-learning's
+epsilon-greedy exploration is genuinely random -- a single training run is
+one sample, and re-running with a different seed can swing the profit by
+more than an order of magnitude (seen directly on this project's own data:
+$412 to $5,946 to $3,919 across three seeds, same everything else). So
+`--n-trials N` (default 1) runs N independent trials per reward kind, each
+with its own seed (`--seed` is the *base* seed; trial i uses `seed + i`),
+saves every trial's Q-table separately under `outputs/runs/<timestamp>/
+trial_NN/`, and reports **mean +/- std cumulative training profit across
+trials** -- the expected-value estimate that should actually be judged,
+not any one trial's number. Trial 0 with the default `--seed 0` reproduces
+this project's earlier single-trial results exactly (nothing about a single
+trial's behavior changed, `--n-trials` just wraps it in a loop).
+
+Reported profit is always the true AMP-objective profit (`env.true_profit`,
+Sec. II), not the shaped reward signal. Key flags: `--capacity-mwh` (default
+8), `--max-rate-mw` (default 1, paper also reports a 2 MW case),
+`--n-price-bins` (default 10 -- **not specified numerically in the paper**),
 `--price-bin-method` (`quantile` default, `equal_width` for the paper's more
 literal "M even price intervals" reading -- see Deviations below),
 `--bin-calibration-hours` (default 720 = 30 days, how much of the series is
@@ -154,16 +169,25 @@ default to match the paper's literal Sec. III-C formulas).
 venv/bin/python3 evaluate.py --data data/test/isone_rt_hourly_lmp_2017.csv
 ```
 
-Freezes the Q-table trained above (epsilon=0, no further learning) and
-replays it on 2017, a year the agent never saw during training. **This is a
-stronger check than the paper itself runs** -- the paper's own Fig. 4 plots
-cumulative profit *during* the single online training pass, which conflates
-learning and evaluation. Reuses the exact price-bin edges fit during
-training (saved as `price_bin_edges_*.npy`) rather than refitting bins from
-the test set's own price range, since evaluating a trained Q-table against
-differently-defined state bins would silently read the wrong table entries.
-If you trained with non-default `--efficiency-charge`/`--efficiency-discharge`,
-pass the same values here -- they aren't auto-loaded from the training run.
+Freezes **every trial's** Q-table from the run above (epsilon=0, no further
+learning), replays each on 2017 (a year the agent never saw during
+training), and reports mean +/- std held-out profit across trials, plus
+each trial's own number for transparency. **This is a stronger check than
+the paper itself runs** -- the paper's own Fig. 4 plots cumulative profit
+*during* the single online training pass, which conflates learning and
+evaluation. Reuses the exact price-bin edges fit during training (saved
+once per reward kind as `price_bin_edges_*.npy`, shared across all trials
+since fitting them doesn't depend on the seed) rather than refitting bins
+from the test set's own price range, since evaluating a trained Q-table
+against differently-defined state bins would silently read the wrong table
+entries. The saved plot shows each reward kind's mean curve with a shaded
++/-1 std band, not just a single line. If you trained with non-default
+`--efficiency-charge`/`--efficiency-discharge`, pass the same values here --
+they aren't auto-loaded from the training run.
+
+Runs from before `--n-trials` was added (flat `q_table_*.npy` directly under
+the run directory, no `trial_NN/` subdirectories) aren't compatible with the
+current `evaluate.py` -- retrain to pick up the new layout.
 
 ## Deviations / assumptions (where the paper is ambiguous)
 
