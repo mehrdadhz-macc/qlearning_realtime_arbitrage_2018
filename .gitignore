@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store
+
+# Claude Code local settings
+.claude/
+
+# Credentials
+.env
+
+# Data files (downloaded locally, not tracked)
+data/raw/*
+!data/raw/.gitkeep
+data/train/*.csv
+data/test/*.csv
+
+# Logs
+outputs/logs/
+
+# Generated outputs (models, plots, run artefacts)
+outputs/models/*
+!outputs/models/.gitkeep
+outputs/plots/*
+!outputs/plots/.gitkeep
+outputs/eval_plots/*
+!outputs/eval_plots/.gitkeep
+outputs/runs/*
+!outputs/runs/.gitkeep
+outputs/data_plots/*
+!outputs/data_plots/.gitkeep
