@@ -14,9 +14,30 @@ data, while a reward relative to a moving-average price (**Reward 2**) does.
 
 ## Data
 
-Real ISO-NE hourly real-time LMP for the system ("ISO NE CA") control area,
+Real ISO-NE hourly real-time LMP for the **Trading Hub** (`.H.INTERNAL_HUB`),
 Jan 1 2016 - Dec 31 2017 (the paper's own range; its headline result, Fig. 4,
-uses 2016 alone).
+uses 2016 alone). Confirmed from the source file's own "Notes" sheet: *"'ISO
+NE CA' tab contains values for the Trading Hub"* -- despite the sheet's name
+suggesting a separate system-wide average, its LMP columns specifically are
+the Hub price (the sheet's non-price columns, e.g. `System_Load`, genuinely
+are system-wide).
+
+Two caveats from that same Notes sheet, worth knowing before trusting the
+numbers to the dollar:
+
+- **RT_LMP's definition changed mid-series**: *"starting on March 1, 2017,
+  this is the hourly average of the five-minute LMP in the hour."* Real-time
+  prices actually clear every 5 minutes; the hourly figure is a derived
+  average. The Notes sheet doesn't state the pre-March-2017 convention, so
+  the 2016 training data and the Jan-Feb 2017 slice of the test data aren't
+  guaranteed to be computed identically to the rest of 2017.
+- **"Final" isn't literally permanent**: *"Hourly settlement values are
+  subject to re-settlement by the ISO. Revised data may be posted at any
+  time."* This is ISO-NE's official historical archive, but not an
+  immutable number.
+- DST transition hours aren't raw metered data: per the Notes sheet, the
+  March "missing" hour and the November "duplicate" hour are each
+  synthesized by averaging their two neighboring real hours.
 
 ```
 venv/bin/pip install -r requirements.txt
@@ -45,12 +66,11 @@ The script caches each year's raw downloaded file under
 `data/raw/isone_rt_hourly_lmp_2016_2017.csv`, and writes
 `data/train/isone_rt_hourly_lmp_2016.csv` / `data/test/isone_rt_hourly_lmp_2017.csv`.
 Verified: 8784 rows for 2016 (leap year), 8760 for 2017, zero missing
-`RT_LMP` values in either. Each day uses a fixed `Hr_End` = 1..24 convention
-(always 24 hours, including DST transition days), so `outputs/data_plots/`
-should show the same flat-baseline-with-sparse-spikes pattern as paper Fig. 1
-(confirmed -- see Known findings below). Only 2016/2017 URLs are hardcoded;
-pass `--years`/`--url` to point at a different year if ISO-NE publishes it in
-the same format.
+`RT_LMP` values in either (`Hr_End` always runs 1..24, see the DST note
+above for why). `outputs/data_plots/` shows the same flat-baseline-with-
+sparse-spikes pattern as paper Fig. 1 (confirmed -- see Known findings
+below). Only 2016/2017 URLs are hardcoded; pass `--years`/`--url` to point
+at a different year if ISO-NE publishes it in the same format.
 
 ## Project structure
 
@@ -154,18 +174,16 @@ pass the same values here -- they aren't auto-loaded from the training run.
 - **Fig. 1's caption** says "PJM Real-time price," but the body text and
   citation [19] both specify ISO-NE hourly real-time LMP -- treated as a
   caption typo, not a real data-source ambiguity.
-- **Data node**: the paper's citation [19] doesn't specify which ISO-NE price
-  series ("Hub" vs. system-wide load-weighted average) it used. This project
-  downloads the `ISO NE CA` (system/control-area) sheet's `RT_LMP` from
-  ISO-NE's bulk archive. Separately, the Web Services API (tested live)
-  explicitly serves the Hub node (`.H.INTERNAL_HUB`, ID 4000) but only for
-  recent years, not 2016/2017. These are two distinct, well-defined ISO-NE
-  series and **are not verified to be numerically identical** -- I wasn't
-  able to cross-check an overlapping date since the ISO Express credentials
-  used for that live test were deleted (`.env` was removed once the API's
-  historical-retention limit was found) before this question came up. If you
-  want to settle this, re-add ISONE_WS_USER/PASSWORD and pull one 2018+ date
-  from both sources for comparison.
+- **Data node -- resolved.** Earlier drafts of this README flagged "Hub vs.
+  system-wide average" as an open, unverified question, guessing the `ISO NE
+  CA` sheet was a separate system-wide load-weighted average distinct from
+  the Web Services API's Hub node (`.H.INTERNAL_HUB`, ID 4000). That guess
+  was wrong: the source file's own Notes sheet explicitly states the `ISO NE
+  CA` tab's LMP columns (including `RT_LMP`) **are** the Trading Hub values.
+  No live API cross-check was actually needed -- the answer was in the
+  downloaded file's documentation the whole time. See the Data section above
+  for what's still worth caveating (the March 2017 methodology change and
+  the resettlement note).
 - Qin et al.'s online modified greedy baseline ([15] in the paper, used for
   the Sec. IV-C comparison) is not implemented here -- would need reading
   that paper directly rather than guessing its threshold rule from a
@@ -192,9 +210,11 @@ first three fixed:
    See "Price bin method" in Deviations above -- switched to causal
    quantile bins fit from a 30-day prefix instead of equal-width bins fit
    from the whole series.
-4. **Data node ambiguity (open, documented, not fixed)** -- see "Data node"
-   in Deviations above. Whether `ISO NE CA` (system average) matches "Hub"
-   isn't verified.
+4. **Data node ambiguity (resolved, not actually a gap).** Originally flagged
+   as an open question (whether `ISO NE CA` matches the Hub series) that
+   would need live API credentials to settle. It didn't -- the source
+   file's own Notes sheet already documents `ISO NE CA`'s LMP columns as the
+   Trading Hub. See "Data node" in Deviations above.
 
 **Results, before vs. after the fixes** (same hyperparameters otherwise:
 `--n-price-bins 10 --alpha 0.5 --gamma 0.9 --epsilon 0.9 --smoothing 0.1`):
