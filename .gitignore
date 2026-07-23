@@ -16,13 +16,9 @@ build/
 # Claude Code local settings
 .claude/
 
-# Data files (downloaded/derived locally, not tracked) -- DATA_SOURCE.txt is
-# the one exception, it's a small static reference doc, not downloaded data.
-data/raw/*
-!data/raw/.gitkeep
-!data/raw/DATA_SOURCE.txt
-data/train/*.csv
-data/test/*.csv
+# Data IS tracked (raw workbooks + cleaned CSV + train/test splits) --
+# ~21MB total, small enough to check in directly rather than requiring every
+# clone to re-run the download/preprocess/split pipeline. See data/raw/DATA_SOURCE.txt.
 
 # Logs
 outputs/logs/

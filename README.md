@@ -39,9 +39,15 @@ numbers to the dollar:
   March "missing" hour and the November "duplicate" hour are each
   synthesized by averaging their two neighboring real hours.
 
-```
-venv/bin/pip install -r requirements.txt
+**The dataset (~21MB: two source workbooks, the cleaned CSV, and the
+train/test splits) is checked into this repo under `data/`** -- small enough
+that requiring every clone to re-download and rebuild it seemed like
+needless friction. `venv/bin/pip install -r requirements.txt` is all you
+need to start training. The pipeline below is for reproducing that data
+from scratch (e.g. if ISO-NE revises the archive, or you want a different
+year), not a required setup step:
 
+```
 venv/bin/python3 scripts/data_generation/download_isone_data.py    # 1/3: fetch the original files
 venv/bin/python3 scripts/data_generation/preprocess_isone_data.py  # 2/3: extract + clean into one series
 venv/bin/python3 scripts/data_generation/split_train_test.py       # 3/3: split by year
@@ -57,9 +63,7 @@ one of them independently:
    / `data/raw/2017_smd_hourly.xlsx` (skips re-downloading if already
    present). Also writes `data/raw/DATA_SOURCE.txt` -- a plain-text guide to
    where this data comes from, the direct URLs, and how to find the same
-   report by hand on iso-ne.com's own website (`data/raw/*` is gitignored
-   since it's downloaded data, but `DATA_SOURCE.txt` is a small static
-   reference doc, so it's checked in despite living in that directory).
+   report by hand on iso-ne.com's own website.
 
         2016: https://www.iso-ne.com/static-assets/documents/2016/02/smd_hourly.xls
         2017: https://www.iso-ne.com/static-assets/documents/2017/02/2017_smd_hourly.xlsx
