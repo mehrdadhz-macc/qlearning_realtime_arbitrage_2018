@@ -69,10 +69,11 @@ def main():
                    zorder=3, edgecolors="none")
         mean, std = vals.mean(), vals.std()
         ci95 = 1.96 * std / np.sqrt(n)
+        ci_low, ci_high = mean - ci95, mean + ci95
         ax.errorbar([i], [mean], yerr=[std], fmt="o", color=color, ecolor=color,
                    elinewidth=2, capsize=6, markersize=9, zorder=4,
                    markeredgecolor="white", markeredgewidth=1.5)
-        ax.annotate(f"${mean:,.0f}\n(n={n}, std=${std:,.0f}\n95% CI +/-${ci95:,.0f})",
+        ax.annotate(f"${mean:,.2f} (mean)\nn={n}, std=${std:,.0f}\n95% CI: [${ci_low:,.0f}, ${ci_high:,.0f}]",
                    (i, mean), color=color, fontsize=8.5,
                    xytext=(14, 0), textcoords="offset points", va="center", fontweight="bold")
 
@@ -90,14 +91,16 @@ def main():
     fig.savefig(out_path, dpi=150)
     print(f"Saved plot to {out_path}")
 
+    def summarize(vals):
+        mean, std = float(vals.mean()), float(vals.std())
+        ci95 = 1.96 * std / np.sqrt(n)
+        return {"mean": mean, "std": std, "min": float(vals.min()), "max": float(vals.max()),
+                "ci95_halfwidth": ci95, "ci95_low": mean - ci95, "ci95_high": mean + ci95}
+
     stats = {
         "n_trials": n,
-        "reward_1": {"mean": float(r1.mean()), "std": float(r1.std()),
-                     "min": float(r1.min()), "max": float(r1.max()),
-                     "ci95_halfwidth": float(1.96 * r1.std() / np.sqrt(n))},
-        "reward_2": {"mean": float(r2.mean()), "std": float(r2.std()),
-                     "min": float(r2.min()), "max": float(r2.max()),
-                     "ci95_halfwidth": float(1.96 * r2.std() / np.sqrt(n))},
+        "reward_1": summarize(r1),
+        "reward_2": summarize(r2),
         "paired_diff_mean": float(d.mean()),
         "paired_diff_std": float(d.std(ddof=1)),
         "paired_t_stat": float(paired_t),

@@ -82,7 +82,12 @@ def main():
     print(f"Evaluating run {run_dir} ({len(trial_dirs)} trial(s)) on "
           f"{len(prices)} held-out hours from {args.data}")
 
-    plt.figure(figsize=(9, 5))
+    fig, (price_ax, profit_ax) = plt.subplots(2, 1, figsize=(10, 6.5), sharex=True, height_ratios=[1, 2])
+    hours_axis = np.arange(len(prices))
+    price_ax.plot(hours_axis, prices, color="tab:gray", linewidth=0.5)
+    price_ax.set_ylabel("Price ($/MWh)")
+    price_ax.set_title("Underlying price series", fontsize=10, color="dimgray", loc="left")
+    colors = {"reward_1": "tab:red", "reward_2": "tab:blue"}
     eval_results = {}
 
     for reward_kind in ("reward_1", "reward_2"):
@@ -128,24 +133,33 @@ def main():
         }
 
         hours = np.arange(len(mean_curve))
-        line, = plt.plot(hours, mean_curve, label=f"{reward_kind} (mean of {len(curves)} trials)")
-        plt.fill_between(hours, mean_curve - std_curve, mean_curve + std_curve,
-                          alpha=0.2, color=line.get_color(), label=f"{reward_kind} (+/- 1 std)")
+        color = colors[reward_kind]
+        profit_ax.fill_between(hours, mean_curve - std_curve, mean_curve + std_curve,
+                                alpha=0.2, color=color, linewidth=0)
+        profit_ax.plot(hours, mean_curve, color=color,
+                        label=f"{reward_kind} (mean of {len(curves)} trials): ${mean_curve[-1]:,.2f}")
+        profit_ax.annotate(f"${mean_curve[-1]:,.2f}", (len(mean_curve) - 1, mean_curve[-1]), color=color,
+                            fontsize=9, fontweight="bold", xytext=(6, 0),
+                            textcoords="offset points", va="center")
 
-    plt.xlabel("Time (hour)")
-    plt.ylabel("Cumulative profit ($)")
-    plt.title("Held-out evaluation -- mean +/- std across trials (greedy policy, frozen Q-tables)")
-    plt.legend()
-    plt.tight_layout()
+    profit_ax.axhline(0, color="gray", linewidth=0.7)
+    profit_ax.set_xlabel("Time (hour)")
+    profit_ax.set_ylabel("Cumulative profit ($)")
+    profit_ax.set_title("Held-out evaluation -- mean +/- 1 std across trials (greedy policy, frozen Q-tables)",
+                         fontsize=11, loc="left")
+    profit_ax.legend()
+    profit_ax.margins(x=0.09)  # room for the end-of-curve annotations
+    fig.tight_layout()
 
     # Kept inside the run's own directory (alongside q_table_*.npy,
     # summary.json, etc.) rather than a separate top-level outputs/eval_plots/
     # -- everything about one run's performance lives in one place.
-    out_path = run_dir / "eval_plot.png"
-    plt.savefig(out_path, dpi=150)
+    out_path = run_dir / "held_out_2017_eval_plot.png"
+    fig.savefig(out_path, dpi=150)
     print(f"Saved plot to {out_path}")
 
-    (run_dir / "eval_summary.json").write_text(json.dumps({"data": args.data, "results": eval_results}, indent=2))
+    (run_dir / "held_out_2017_eval_summary.json").write_text(
+        json.dumps({"data": args.data, "results": eval_results}, indent=2))
 
 
 if __name__ == "__main__":
