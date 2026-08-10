@@ -30,15 +30,17 @@ outputs/logs/
 # Generated outputs: each run is fully self-contained under outputs/runs/
 # <timestamp>/ (q_table_*.npy, price_bin_edges_*.npy, history_*.npy,
 # summary.json, eval_summary.json, individual_trials/, etc.) -- all
-# regenerable from the scripts, so only each run's PLOTS (*.png) and
-# params.txt (the human-readable parameter/result summary) are pushed;
-# everything else stays local-only. outputs/data_plots/ is the one
-# exception -- raw price-series plots aren't tied to any specific run.
+# regenerable from the scripts, so only each run's PLOTS (*.png),
+# params.txt (parameter/result summary), and README.md (findings writeup,
+# for runs that have one) are pushed; everything else stays local-only.
+# outputs/data_plots/ is the one exception -- raw price-series plots
+# aren't tied to any specific run.
 outputs/runs/*
 !outputs/runs/.gitkeep
 !outputs/runs/*/
 outputs/runs/*/*
 !outputs/runs/*/*.png
 !outputs/runs/*/params.txt
+!outputs/runs/*/README.md
 outputs/data_plots/*
 !outputs/data_plots/.gitkeep

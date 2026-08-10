@@ -446,53 +446,26 @@ own printed threshold formula while implementing this -- see
 `src/omg_baseline.py`'s module docstring for the three independent
 re-derivations that caught it.
 
-### Experiment 1: best seed per reward (`outputs/runs/*_exp1_best_seed_per_reward/`)
+### Experiment 1 & 2: seed-based training vs. held-out comparisons
 
-**Intuition**: if each reward function is trained on the single seed that
-gave *it* the highest training profit (found independently for each reward
-from a 50-trial sweep), do those same two Q-tables also do well on held-out
-2017 data? This tests whether "a seed that trains well" is any kind of
-signal for "a policy that generalizes well."
+Two follow-up experiments dig into how much a single seed can be trusted,
+each with its own dedicated README in its run directory (findings,
+tables, file listing, and exact reproduction commands -- not duplicated
+here):
 
-**Finding: no -- and it can flip entirely.** Reward 1's best-training seed
-(1688060240, $5,956.68 training) generalizes to a smooth, steady
-**$13,318.85** on 2017. Reward 2's best-training seed (1455819991, $7,414.94
-training -- the seed that nearly matched the paper's Fig. 4 number) barely
-breaks even on 2017, ending at **$544.39**, essentially flat all year. A
-seed picked purely for training performance is not a reliable indicator of
-generalization, and here the two rewards' best-training seeds land on
-opposite ends of the held-out spectrum. See
-`training_best_seed_per_reward_plot.png` and
-`held_out_2017_best_seed_per_reward_plot.png` in the run directory.
+- **[Experiment 1: best seed per reward](outputs/runs/20260810_154929_exp1_best_seed_per_reward/README.md)**
+  -- each reward trained on the single seed that gave *it* the highest
+  training profit; those two Q-tables land on opposite ends of the
+  held-out spectrum ($13,318.85 vs. $544.39), showing a training-best seed
+  is not a reliable indicator of generalization.
+- **[Experiment 2: 100-seed paired distribution](outputs/runs/20260810_154500_exp2_100seed_distribution/README.md)**
+  -- both rewards trained on the same 100 seeds; Reward 2's training-time
+  edge is not just significant but universal (100/100 wins, t=23.54), yet
+  that edge evaporates on held-out data (53/100 wins, t=1.26, not
+  significant) -- the same flip as Experiment 1, now with statistical
+  power behind it.
 
-### Experiment 2: 100-seed paired distribution (`outputs/runs/*_exp2_100seed_distribution/`)
-
-**Intuition**: Experiment 1 is two single trials (illustrative, not
-statistical). This experiment trains both rewards on the SAME 100 seeds
-(paired design) at the recommended hyperparameters, to get a reliable
-average and interval for both training and held-out profit.
-
-**Training-time finding: Reward 2's edge is not just significant, it's
-universal at this config.** Reward 1 mean $1,264.31 (std $2,073.25), Reward
-2 mean $3,208.36 (std $2,173.64); paired t=23.54, and **Reward 2 wins all
-100/100 paired seeds** -- a much cleaner result than the earlier 100-trial
-run at the original untuned hyperparameters (83/100 wins, t=9.97; see
-"100-trial result" above). Tuning eta/M doesn't just raise the mean, it
-makes Reward 2's advantage essentially deterministic during training.
-
-**Held-out finding: the advantage does not survive.** Reward 1 mean
-$6,590.73 (std $5,878.82), Reward 2 mean $7,713.17 (std $7,110.87); paired
-t=1.26 (not significant, needs \|t\|>1.98), Reward 2 wins only 53/100 --
-barely better than a coin flip, and consistent with the original
-100-trial-at-default-hyperparameters finding above. This reproduces
-Experiment 1's flip at full statistical power: whatever makes Reward 2 win
-so reliably during training does not reliably carry over to an unseen year.
-
-See `training_distribution_plot.png` / `held_out_2017_distribution_plot.png`
-(per-seed scatter, mean +/- 1 std) and
-`training_cumulative_profit_over_time_plot.png` (mean +/- [10th,90th]
-percentile band across all 100 trials, full 8,784-hour curve) in the run
-directory. Only each run's plots and `params.txt` are pushed to git (see
-`.gitignore`); the underlying Q-tables, histories, and per-trial
-subdirectories are regenerable locally via the commands documented in each
-run's `params.txt`.
+Only each run's plots, `params.txt`, and `README.md` are pushed to git
+(see `.gitignore`); the underlying Q-tables, histories, and per-trial
+subdirectories are regenerable locally via the commands in each run's own
+README.
