@@ -23,7 +23,6 @@ from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 
 import sys
@@ -31,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.data_loader import load_price_series
 from train import run_training
+from scripts.data_plots._plot_helpers import make_price_profit_figure
 
 BEST_SEED = 1455819991  # highest-profit trial (Reward 2, $7,414.94) in outputs/runs/sweeps/bins_p1/m5
 
@@ -60,9 +60,9 @@ def main():
         time.strftime("%Y%m%d_%H%M%S") + "_best_seed_reward_comparison")
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    fig, ax = plt.subplots(figsize=(10, 5))
     colors = {"reward_1": "tab:red", "reward_2": "tab:blue"}
     results = {}
+    curves = {}
 
     for reward_kind in ["reward_1", "reward_2"]:
         agent, history, cumulative_profit, final_pass_profit, edges = run_training(
@@ -78,16 +78,10 @@ def main():
         np.save(run_dir / f"cumulative_profit_curve_{reward_kind}.npy", curve)
         agent.save(run_dir / f"q_table_{reward_kind}.npy")
         results[reward_kind] = {"final_profit": float(final_pass_profit)}
+        curves[reward_kind.replace("_", " ").title()] = (reward_kind, curve)
 
-        ax.plot(np.arange(len(curve)), curve, label=reward_kind.replace("_", " ").title(),
-                color=colors[reward_kind], linewidth=1)
-
-    ax.set_xlabel("Time (hour)")
-    ax.set_ylabel("Cumulative profit ($)")
-    ax.set_title(f"Reward 1 vs Reward 2, same seed ({args.seed}), single pass over 2016")
-    ax.axhline(0, color="gray", linewidth=0.7)
-    ax.legend()
-    fig.tight_layout()
+    fig = make_price_profit_figure(
+        prices, curves, colors, f"Reward 1 vs Reward 2, same seed ({args.seed}), single pass over 2016")
     plot_path = run_dir / "reward_comparison_plot.png"
     fig.savefig(plot_path, dpi=150)
     print(f"Saved plot to {plot_path}")

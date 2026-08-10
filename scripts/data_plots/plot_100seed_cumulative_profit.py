@@ -17,12 +17,16 @@ Usage:
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.data_loader import load_price_series
 
 
 def load_curves(run_dir, reward_kind):
@@ -40,14 +44,20 @@ def load_curves(run_dir, reward_kind):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--run-dir", required=True)
+    parser.add_argument("--data", default="data/train/isone_rt_hourly_lmp_2016.csv",
+                         help="Price series shown in the top panel (must match the hours these trials trained on)")
     parser.add_argument("--lower-pct", type=float, default=10.0)
     parser.add_argument("--upper-pct", type=float, default=90.0)
     args = parser.parse_args()
 
     run_dir = Path(args.run_dir)
     colors = {"reward_1": "tab:red", "reward_2": "tab:blue"}
+    _, prices = load_price_series(args.data)
 
-    fig, ax = plt.subplots(figsize=(10, 5.5))
+    fig, (price_ax, ax) = plt.subplots(2, 1, figsize=(10, 7), sharex=True, height_ratios=[1, 2])
+    price_ax.plot(np.arange(len(prices)), prices, color="tab:gray", linewidth=0.5)
+    price_ax.set_ylabel("Price ($/MWh)")
+    price_ax.set_title("Underlying price series", fontsize=10, color="dimgray", loc="left")
     band_stats = {}
     for reward_kind in ["reward_1", "reward_2"]:
         curves = load_curves(run_dir, reward_kind)
@@ -75,11 +85,11 @@ def main():
                  f"mean +/- [{args.lower_pct:g}th, {args.upper_pct:g}th] percentile band across trials")
     ax.legend(loc="upper left")
     fig.tight_layout()
-    out_path = run_dir / "cumulative_profit_over_time_plot.png"
+    out_path = run_dir / "training_cumulative_profit_over_time_plot.png"
     fig.savefig(out_path, dpi=150)
     print(f"Saved plot to {out_path}")
 
-    (run_dir / "cumulative_profit_over_time_stats.json").write_text(json.dumps(band_stats, indent=2))
+    (run_dir / "training_cumulative_profit_over_time_stats.json").write_text(json.dumps(band_stats, indent=2))
     print(json.dumps(band_stats, indent=2))
 
 

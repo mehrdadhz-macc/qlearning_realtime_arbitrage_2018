@@ -26,7 +26,6 @@ from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 
 import sys
@@ -35,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.data_loader import load_price_series
 from train import run_training
 from evaluate import greedy_rollout
+from scripts.data_plots._plot_helpers import make_price_profit_figure
 
 BEST_HELD_OUT_SEED_REWARD_1 = 345075200  # highest Reward-1 held-out profit ($21,739.65) in Experiment 2's 100-trial sweep
 BEST_HELD_OUT_SEED_REWARD_2 = 406886644  # highest Reward-2 held-out profit ($25,388.67) in Experiment 2's 100-trial sweep
@@ -68,11 +68,10 @@ def main():
         time.strftime("%Y%m%d_%H%M%S") + "_exp3_best_held_out_seed_per_reward")
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    train_fig, train_ax = plt.subplots(figsize=(10, 5))
-    eval_fig, eval_ax = plt.subplots(figsize=(10, 5))
     seeds = {"reward_1": args.seed_reward1, "reward_2": args.seed_reward2}
     colors = {"reward_1": "tab:red", "reward_2": "tab:blue"}
     results = {}
+    train_curves, eval_curves = {}, {}
 
     for reward_kind in ["reward_1", "reward_2"]:
         seed = seeds[reward_kind]
@@ -100,29 +99,20 @@ def main():
         results[reward_kind] = {"seed": seed, "training_final_profit": float(final_pass_profit),
                                  "held_out_2017_final_profit": held_out_profit}
 
-        train_ax.plot(np.arange(len(train_curve)), train_curve,
-                      label=f"{reward_kind.replace('_', ' ').title()} (seed={seed})",
-                      color=colors[reward_kind], linewidth=1)
-        eval_ax.plot(np.arange(len(held_out_curve)), held_out_curve,
-                     label=f"{reward_kind.replace('_', ' ').title()} (seed={seed})",
-                     color=colors[reward_kind], linewidth=1)
+        label = f"{reward_kind.replace('_', ' ').title()} (seed={seed})"
+        train_curves[label] = (reward_kind, train_curve)
+        eval_curves[label] = (reward_kind, held_out_curve)
 
-    train_ax.set_xlabel("Time (hour)")
-    train_ax.set_ylabel("Cumulative profit ($)")
-    train_ax.set_title("TRAINING profit: Reward 1 vs Reward 2, each on its OWN best HELD-OUT seed (2016, single pass)")
-    train_ax.axhline(0, color="gray", linewidth=0.7)
-    train_ax.legend()
-    train_fig.tight_layout()
+    train_fig = make_price_profit_figure(
+        prices, train_curves, colors,
+        "TRAINING profit: Reward 1 vs Reward 2, each on its OWN best HELD-OUT seed (2016, single pass)")
     train_plot_path = run_dir / "training_best_held_out_seed_per_reward_plot.png"
     train_fig.savefig(train_plot_path, dpi=150)
     print(f"Saved plot to {train_plot_path}")
 
-    eval_ax.set_xlabel("Time (hour)")
-    eval_ax.set_ylabel("Cumulative profit ($)")
-    eval_ax.set_title("HELD-OUT 2017 profit: Reward 1 vs Reward 2, each on its OWN best HELD-OUT seed")
-    eval_ax.axhline(0, color="gray", linewidth=0.7)
-    eval_ax.legend()
-    eval_fig.tight_layout()
+    eval_fig = make_price_profit_figure(
+        test_prices, eval_curves, colors,
+        "HELD-OUT 2017 profit: Reward 1 vs Reward 2, each on its OWN best HELD-OUT seed")
     eval_plot_path = run_dir / "held_out_2017_best_held_out_seed_per_reward_plot.png"
     eval_fig.savefig(eval_plot_path, dpi=150)
     print(f"Saved plot to {eval_plot_path}")
