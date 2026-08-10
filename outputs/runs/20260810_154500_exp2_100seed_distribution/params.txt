@@ -1,0 +1,75 @@
+Experiment 2: 100-seed paired distribution, Reward 1 vs Reward 2
+====================================================================
+
+100 independent trials, each reward trained on the SAME 100 seeds
+(paired design: trial i's seed is identical for Reward 1 and Reward 2,
+so the comparison isn't contaminated by unrelated exploration luck).
+Seeds generated from --seed 42 (train.py's seed-generation RNG), single
+pass over 2016, at this project's best confirmed single-pass hyperparameters.
+
+Parameters
+----------
+data:                  data/train/isone_rt_hourly_lmp_2016.csv
+capacity_mwh:          8.0
+max_rate_mw:           1.0
+n_price_bins (M):      5
+price_bin_method:      quantile
+bin_calibration_hours: 720
+alpha:                 0.5
+gamma:                 0.9
+epsilon:               0.9
+smoothing (eta):       0.001
+efficiency_charge:     1.0
+efficiency_discharge:  1.0
+n_passes:              1
+n_trials:              100
+seed:                  42  (generates the 100 trial seeds; not used directly)
+
+Results -- average and interval across the 100 seeds
+------------------------------------------------------
+Reward 1: mean $1,264.31   std $2,073.25   95% CI +/- $406.36   range [-$2,574.77, $7,227.58]
+Reward 2: mean $3,208.36   std $2,173.64   95% CI +/- $426.03   range [-$1,754.88, $8,029.65]
+
+Paired comparison (Reward 2 - Reward 1, same seed each trial)
+-----------------------------------------------------------------
+mean difference: +$1,944.05   std $825.77   paired t-stat: 23.54
+Reward 2 wins 100/100 paired trials.
+
+This is a much cleaner and more statistically decisive result than the
+earlier 100-trial comparison run at this project's original, untuned
+hyperparameters (M=10, eta=0.1), which found Reward 2 winning only 83/100
+trials with paired t=9.97. At these tuned hyperparameters (M=5, eta=0.001),
+Reward 2's advantage over Reward 1 during training is not just significant
+on average -- it holds for every single one of the 100 tested seeds.
+
+See training_distribution_plot.png for the full per-seed scatter with mean
++/- 1 std, training_distribution_stats.json for the same numbers in
+machine-readable form, and training_cumulative_profit_over_time_plot.png
+for the mean +/- [10th,90th] percentile band over the full 8784-hour
+training pass (all files above are TRAINING-time profit, i.e. accumulated
+online as the Q-table learns, same methodology as the paper's own Fig. 4).
+
+Held-out (2017) evaluation
+----------------------------
+Each of the 100 trials' Q-tables was also frozen (epsilon=0, no further
+learning) and replayed greedily on data/test/isone_rt_hourly_lmp_2017.csv,
+a year the agent never trained on -- this is an ADDITIONAL, stronger check
+beyond what the paper itself does (the paper never holds out a test year).
+See held_out_2017_eval_plot.png, held_out_2017_eval_summary.json (raw
+per-trial results, produced by evaluate.py), and
+held_out_2017_distribution_stats.json (paired stats, matching the format
+of training_distribution_stats.json).
+
+Held-out results -- average and interval across the same 100 seeds
+----------------------------------------------------------------------
+Reward 1: mean $6,590.73   std $5,878.82   range [-$5,736.92, $21,739.65]
+Reward 2: mean $7,713.17   std $7,110.87   range [-$7,899.76, $25,388.67]
+Paired diff (Reward 2 - Reward 1): mean +$1,122.43   std $8,913.93   paired t-stat: 1.26
+Reward 2 wins 53/100 paired trials.
+
+Unlike training, Reward 2's advantage over Reward 1 is NOT statistically
+significant on held-out data (|t|=1.26 < 1.98 needed) and barely beats a
+coin flip (53/100) -- consistent with this project's earlier finding at
+the original untuned hyperparameters (see README "Known findings"):
+Reward 2's edge is real and large during training, but doesn't reliably
+carry over to an unseen year.

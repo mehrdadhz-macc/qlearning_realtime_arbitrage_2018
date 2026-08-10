@@ -107,7 +107,11 @@ scripts/
     preprocess_isone_data.py   # 2/3: extract + clean -> data/raw/*_clean.csv
     split_train_test.py        # 3/3: split by year -> data/train/, data/test/
   data_plots/
-    plot_price_series.py       # Fig. 1 style raw + moving-average price plot
+    plot_price_series.py                    # Fig. 1 style raw + moving-average price plot, any --data file
+    plot_best_seed_reward_comparison.py     # Reward 1 vs Reward 2, ONE shared seed, training curves
+    plot_best_seed_per_reward.py            # Experiment 1: each reward on its OWN best seed, training + held-out
+    plot_100seed_distribution.py            # Experiment 2: mean/interval scatter, --which training|held_out
+    plot_100seed_cumulative_profit.py       # Experiment 2: mean +/- percentile band over time, all trials
 
 data/
   raw/     original workbooks, DATA_SOURCE.txt, and the cleaned combined CSV
@@ -119,17 +123,23 @@ src/
   environment.py       # StorageArbitrageEnv: AMP dynamics (Sec. II) + Lemma 1 bang-bang actions
   rewards.py            # Reward 1 (instant profit) and Reward 2 (moving-average-relative), Sec. III-C
   qlearning_agent.py    # tabular Q-learning, Eq. 7 / Algorithm 1
+  omg_baseline.py        # Online Modified Greedy baseline (Qin et al. 2016), Sec. IV-C's comparison
 
-train.py      # online Q-learning over one price series (paper's own training == evaluation)
-evaluate.py   # freeze the learned Q-table, replay greedily on a held-out year (see below)
+train.py                   # online Q-learning over one price series (paper's own training == evaluation)
+evaluate.py                # freeze the learned Q-table, replay greedily on a held-out year (see below)
+evaluate_omg_baseline.py   # fit + roll out the OMG baseline, in-sample and held-out
 
 outputs/
   runs/<timestamp>/           # everything about ONE run lives here, nothing scattered elsewhere:
     price_bin_edges_*.npy     #   shared across all trials (see Train below), summary.json (train.py)
     summary.json              #   eval_summary.json, eval_plot.png (evaluate.py)
-    trial_00/, trial_01/, ...
+    params.txt                #   human-readable parameters + results (custom experiment scripts)
+    trial_00/, trial_01/, ...   #   or nested under individual_trials/ if reorganized for readability
       q_table_*.npy           #   one independently-trained model per trial
       history_*.npy
+    # only *.png and params.txt from each run are pushed to git (see .gitignore) --
+    # everything else (q_tables, histories, per-trial subdirectories, logs,
+    # summary.json) is regenerable from the scripts and stays local-only.
   data_plots/                 # raw price-series plots (plot_price_series.py) -- not tied to a run
 ```
 
@@ -240,9 +250,10 @@ current `evaluate.py` -- retrain to pick up the new layout.
   opportunity lives -- into 1-2 bins. Switching to causal quantile bins
   measurably changed results (see Known findings). `--price-bin-method
   equal_width` is available for the more literal paper reading.
-- **Fig. 1's caption** says "PJM Real-time price," but the body text and
-  citation [19] both specify ISO-NE hourly real-time LMP -- treated as a
-  caption typo, not a real data-source ambiguity.
+- **Fig. 1's caption** says "PJM Real-time price," and body text/citation
+  [19] specify ISO-NE -- **investigated in depth, and this is likely a real
+  data-source mismatch, not a typo.** See "Data provenance: does our data
+  match Fig. 1?" in Known findings below.
 - **Data node -- resolved.** Earlier drafts of this README flagged "Hub vs.
   system-wide average" as an open, unverified question, guessing the `ISO NE
   CA` sheet was a separate system-wide load-weighted average distinct from
@@ -253,10 +264,13 @@ current `evaluate.py` -- retrain to pick up the new layout.
   downloaded file's documentation the whole time. See the Data section above
   for what's still worth caveating (the March 2017 methodology change and
   the resettlement note).
-- Qin et al.'s online modified greedy baseline ([15] in the paper, used for
-  the Sec. IV-C comparison) is not implemented here -- would need reading
-  that paper directly rather than guessing its threshold rule from a
-  secondary description.
+- **Qin et al.'s online modified greedy (OMG) baseline** ([15] in the paper,
+  Sec. IV-C's comparison) **is implemented**, in `src/omg_baseline.py` --
+  read directly from the source paper (arXiv:1405.7789), not guessed from
+  Wang & Zhang's one-paragraph secondary description. Their own Example
+  8(i) closed-form threshold is printed with a sign error (verified
+  numerically and re-derived independently three ways); see the module
+  docstring for the full correction. Run with `evaluate_omg_baseline.py`.
 
 ## Known findings from this replication
 
@@ -342,24 +356,143 @@ comparison between the two rewards, including earlier numbers in this
 README -- run `--n-trials` at a size like 100 before drawing a conclusion
 about which reward function is actually better on held-out data.
 
-The paper's own absolute figure (~$28k on 2016) still isn't matched by
-either reward's training-time mean, which is expected given M, eta, and the
-training regime (number of passes) are never given numeric values in the
-paper.
+Two different paper figures are easy to conflate here: Fig. 4 (Sec. IV-B,
+Reward 1 vs. Reward 2, single pass over 2016) shows Reward 2 reaching
+**~$6,900**; Fig. 6 (Sec. IV-C, vs. the OMG baseline) reports **$28,027**
+for what should be the same reward/battery/data -- the paper itself doesn't
+reconcile these two numbers for the same setup. Fig. 4's ~$6,900 is the
+correct target for the Reward 1 vs. Reward 2 comparisons in this README.
 
-- The downloaded 2016 price series visually reproduces paper Fig. 1's shape
-  closely: a flat ~$20-50/MWh baseline with sparse sharp spikes and one
-  dramatic outlier (here, ~$1439/MWh), both around a similar relative
-  position in the year. See `outputs/data_plots/isone_rt_hourly_lmp_2016.png`.
 - 2016 real-time prices include negative values (min -$156.04/MWh) --
   expected for real-time LMP, but worth knowing since it means Reward 1's
   "charge = pay the spot price" can occasionally be a *reward*, not a cost,
   in a way Reward 2 doesn't specially account for.
 
-**Next step if you want to chase the paper's exact magnitude**: sweep
-`--n-price-bins`, `--smoothing`, and `--bin-calibration-hours`, and consider
-whether more than one pass over 2016 (the paper's Algorithm 1 doesn't state
-number of episodes/passes either) is needed before judging convergence --
-right now `train.py` does exactly one linear pass through the series,
-matching the paper's literal "online" framing but not necessarily its total
-amount of learning.
+### Data provenance: does our data match Fig. 1?
+
+Fig. 1 plots the raw price series itself (not a result), captioned "PJM
+Real-time price" while the body text says ISO-NE. Investigated directly by
+rendering the paper's actual figure (not just its OCR'd text) and comparing
+against every ISO-NE series available: the Trading Hub (`ISO NE CA`) and
+**all 8 load zones** (ME, NH, VT, CT, RI, SEMA, WCMA, NEMA -- confirmed from
+the raw workbook's own sheet names). Result: **all 9 series** show the exact
+same shape -- a quiet baseline for the first ~5,000 hours, then one dominant
+spike at hour 5,366 (Aug 11, 2016, a real, documented New England heat wave)
+reaching $1,370-1,450, then quiet again. None of them has a large spike near
+hour 0. Fig. 1, by contrast, shows its single largest spike (~$1,100) right
+at the start of the year. A PJM RTO (system-wide) 2016 series (borrowed from
+the sibling `ppo_rnn_arbitrage_2019` project) doesn't match either -- its
+max is only $227.72, an order of magnitude short of Fig. 1's spikes.
+
+Conclusion: our ISO-NE download is very likely correct (9 independently
+sourced series all agree on the same real event, which a download bug
+wouldn't produce), and Fig. 1 is very likely showing genuinely different
+data than the paper's own Sec. IV-B/C experiments used -- probably a
+reused/mislabeled figure, possibly actually PJM as captioned, from a
+different (and not yet identified) node. Treated as a dead end, not worth
+more download effort: Fig. 4 is the text-unambiguous, actually-used-in-
+experiments figure to validate against instead.
+
+### Best hyperparameters found (single pass, matching the paper's actual methodology)
+
+Swept `--smoothing` (eta, 14 values) and `--n-price-bins` (M, 11 values) at
+`--n-trials 50` each. One correction along the way: `--n-passes` (repeating
+the price series before totaling profit) was added and initially looked
+promising, but **Fig. 4's own x-axis runs to exactly 8,784 -- one calendar
+year -- confirming the paper only ever does a single pass.** All
+multi-pass results were discarded as not comparable to the paper; only
+`--n-passes 1` findings are reported below.
+
+| eta | M | mean training profit (n=50) | vs. default (paired t) |
+|---|---|---|---|
+| 0.1 (original default) | 10 (original default) | $2,137.26 | -- |
+| 0.001 | 10 | $3,193.59 | -- |
+| **0.001** | **5** | **$3,473.14** | **t=2.97** (significant) |
+| 0.001 | 4 | $3,531.09 | t=2.79 (significant) |
+
+eta in {0.001, 0.002, 0.005, 0.01} were statistically indistinguishable
+from each other (top cluster of the 14-value sweep); M in {4,5,6,7} all
+significantly beat the M=10 default, M=5 has the strongest paired
+significance. Recommended config: `--smoothing 0.001 --n-price-bins 5`
+(capacity 8 MWh, rate 1 MW, alpha/gamma/epsilon 0.5/0.9/0.9 unchanged from
+Algorithm 1) -- about **1.6x the untuned default**, but still short of the
+paper's ~$6,900.
+
+**Why the remaining gap is probably not a bug or a missing hyperparameter.**
+The paper reports exactly *one* trial for Fig. 4 -- no seed, no repeats, no
+error bars. Running 50 trials at the recommended config shows individual
+trials regularly reaching $6,000-7,400 (e.g. seed 1455819991 -> $7,414.94,
+above the paper's own number; seed 1688060240 -> $6,897.92, matching it
+almost exactly). $6,900 sits at about the 96th percentile of our own
+distribution (mean $3,473, std ~$2,100) -- a good draw, not an outlier. The
+paper's headline number looks like it may simply be one favorable
+single-trial report, not evidence of a systematic difference from this
+implementation.
+
+### OMG baseline (Sec. IV-C)
+
+`evaluate_omg_baseline.py`, 8 MWh battery, causal [p_min, p_max] estimated
+from the first 30 training days:
+
+| | 1 MW, in-sample (2016) | 1 MW, held-out (2017) | 2 MW, in-sample (2016) | 2 MW, held-out (2017) |
+|---|---|---|---|---|
+| OMG baseline | $10,164.04 | $10,841.02 | $7,550.96 | $8,753.44 |
+
+OMG is deterministic (no seed) and, unlike the paper's Fig. 6 story, beats
+this project's own Reward 2 training-time mean ($3,473) at these
+hyperparameters -- though not necessarily a favorable, cherry-picked single
+Reward 2 trial (see above). Sign error found and corrected in Qin et al.'s
+own printed threshold formula while implementing this -- see
+`src/omg_baseline.py`'s module docstring for the three independent
+re-derivations that caught it.
+
+### Experiment 1: best seed per reward (`outputs/runs/*_exp1_best_seed_per_reward/`)
+
+**Intuition**: if each reward function is trained on the single seed that
+gave *it* the highest training profit (found independently for each reward
+from a 50-trial sweep), do those same two Q-tables also do well on held-out
+2017 data? This tests whether "a seed that trains well" is any kind of
+signal for "a policy that generalizes well."
+
+**Finding: no -- and it can flip entirely.** Reward 1's best-training seed
+(1688060240, $5,956.68 training) generalizes to a smooth, steady
+**$13,318.85** on 2017. Reward 2's best-training seed (1455819991, $7,414.94
+training -- the seed that nearly matched the paper's Fig. 4 number) barely
+breaks even on 2017, ending at **$544.39**, essentially flat all year. A
+seed picked purely for training performance is not a reliable indicator of
+generalization, and here the two rewards' best-training seeds land on
+opposite ends of the held-out spectrum. See
+`training_best_seed_per_reward_plot.png` and
+`held_out_2017_best_seed_per_reward_plot.png` in the run directory.
+
+### Experiment 2: 100-seed paired distribution (`outputs/runs/*_exp2_100seed_distribution/`)
+
+**Intuition**: Experiment 1 is two single trials (illustrative, not
+statistical). This experiment trains both rewards on the SAME 100 seeds
+(paired design) at the recommended hyperparameters, to get a reliable
+average and interval for both training and held-out profit.
+
+**Training-time finding: Reward 2's edge is not just significant, it's
+universal at this config.** Reward 1 mean $1,264.31 (std $2,073.25), Reward
+2 mean $3,208.36 (std $2,173.64); paired t=23.54, and **Reward 2 wins all
+100/100 paired seeds** -- a much cleaner result than the earlier 100-trial
+run at the original untuned hyperparameters (83/100 wins, t=9.97; see
+"100-trial result" above). Tuning eta/M doesn't just raise the mean, it
+makes Reward 2's advantage essentially deterministic during training.
+
+**Held-out finding: the advantage does not survive.** Reward 1 mean
+$6,590.73 (std $5,878.82), Reward 2 mean $7,713.17 (std $7,110.87); paired
+t=1.26 (not significant, needs \|t\|>1.98), Reward 2 wins only 53/100 --
+barely better than a coin flip, and consistent with the original
+100-trial-at-default-hyperparameters finding above. This reproduces
+Experiment 1's flip at full statistical power: whatever makes Reward 2 win
+so reliably during training does not reliably carry over to an unseen year.
+
+See `training_distribution_plot.png` / `held_out_2017_distribution_plot.png`
+(per-seed scatter, mean +/- 1 std) and
+`training_cumulative_profit_over_time_plot.png` (mean +/- [10th,90th]
+percentile band across all 100 trials, full 8,784-hour curve) in the run
+directory. Only each run's plots and `params.txt` are pushed to git (see
+`.gitignore`); the underlying Q-tables, histories, and per-trial
+subdirectories are regenerable locally via the commands documented in each
+run's `params.txt`.

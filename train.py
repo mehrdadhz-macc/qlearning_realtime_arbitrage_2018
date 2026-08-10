@@ -39,13 +39,29 @@ from src.rewards import MovingAveragePrice, reward_1, reward_2
 def run_training(prices, reward_kind, capacity_mwh, max_rate_mw, n_price_bins,
                   alpha, gamma, epsilon, smoothing, seed, price_bin_method,
                   bin_calibration_hours, efficiency_charge, efficiency_discharge,
-                  reward_efficiency_aware):
+                  reward_efficiency_aware, n_passes=1):
     # Fit price bins causally: only the first `bin_calibration_hours` of the
-    # series are used to set edges, not the whole year (see
-    # StorageArbitrageEnv's module docstring for why that matters).
+    # ORIGINAL (un-repeated) series are used to set edges (see
+    # StorageArbitrageEnv's module docstring for why that matters) --
+    # computed before n_passes repetition so more passes doesn't change
+    # what "causal" means here.
     calibration_prices = prices[:min(bin_calibration_hours, len(prices))]
+
+    # n_passes > 1: Algorithm 1 never states how many times the storage
+    # sees the data (see this project's README's "Next step") -- one
+    # linear pass is the literal "online" reading, but Q-learning over a
+    # (price_bin, energy_bin) table with only ~91k possible (state,action)
+    # visits in a single 2016 pass may not have converged by the time
+    # profit is totaled. Repeating the series lets the SAME single
+    # continuous episode (energy level and the moving average both carry
+    # over across the repeat boundary, exactly like the ordinary
+    # wrap-free single pass) run longer before judgment; the reported
+    # number stays comparable to a true single year by taking only the
+    # FINAL lap's profit, not the sum across every repeat.
+    training_prices = np.tile(prices, n_passes) if n_passes > 1 else prices
+
     env = StorageArbitrageEnv(
-        prices, capacity_mwh=capacity_mwh, max_rate_mw=max_rate_mw, n_price_bins=n_price_bins,
+        training_prices, capacity_mwh=capacity_mwh, max_rate_mw=max_rate_mw, n_price_bins=n_price_bins,
         price_bin_method=price_bin_method, bin_fit_prices=calibration_prices,
         efficiency_charge=efficiency_charge, efficiency_discharge=efficiency_discharge,
     )
@@ -55,6 +71,8 @@ def run_training(prices, reward_kind, capacity_mwh, max_rate_mw, n_price_bins,
 
     state = env.reset()
     cumulative_profit = 0.0
+    final_pass_start_profit = None  # cumulative_profit at the start of the last lap
+    final_pass_start_t = (n_passes - 1) * len(prices)
     history = []
     done = False
     while not done:
@@ -72,6 +90,8 @@ def run_training(prices, reward_kind, capacity_mwh, max_rate_mw, n_price_bins,
         agent.update(state, action, r, next_state)
 
         profit = env.true_profit(price, c, d)  # AMP objective (Sec. II), not the shaped reward
+        if env.t - 1 == final_pass_start_t:
+            final_pass_start_profit = cumulative_profit
         cumulative_profit += profit
         history.append({"t": env.t - 1, "price": price, "action": action,
                          "c": c, "d": d, "profit": profit,
@@ -81,7 +101,8 @@ def run_training(prices, reward_kind, capacity_mwh, max_rate_mw, n_price_bins,
         if done:
             break
 
-    return agent, history, cumulative_profit, env.price_bin_edges
+    final_pass_profit = cumulative_profit - (final_pass_start_profit or 0.0)
+    return agent, history, cumulative_profit, final_pass_profit, env.price_bin_edges
 
 
 def main():
@@ -111,6 +132,11 @@ def main():
     parser.add_argument("--n-trials", type=int, default=1,
                          help="Independent trials per reward kind, each with its own seed; "
                               "results are reported as mean +/- std across trials")
+    parser.add_argument("--n-passes", type=int, default=1,
+                         help="Repeat the price series this many times before totaling profit (Algorithm 1 "
+                              "never states how many passes -- 1 is the literal 'online' reading). Reported "
+                              "profit is only the FINAL pass's, comparable across --n-passes values; the "
+                              "earlier passes just give the Q-table more time to converge first.")
     parser.add_argument("--out-dir", default=None, help="Override outputs/runs/<timestamp>")
     args = parser.parse_args()
 
@@ -137,13 +163,15 @@ def main():
         price_bin_edges = None
 
         for trial, seed in enumerate(trial_seeds):
-            agent, history, cumulative_profit, edges = run_training(
+            agent, history, cumulative_profit, final_pass_profit, edges = run_training(
                 prices, reward_kind, args.capacity_mwh, args.max_rate_mw, args.n_price_bins,
                 args.alpha, args.gamma, args.epsilon, args.smoothing, seed,
                 args.price_bin_method, args.bin_calibration_hours,
                 args.efficiency_charge, args.efficiency_discharge, args.reward_efficiency_aware,
+                args.n_passes,
             )
-            print(f"  trial {trial} (seed={seed}): cumulative training profit = ${cumulative_profit:,.2f}")
+            pass_text = f" (final pass of {args.n_passes}; {args.n_passes} total-passes profit=${cumulative_profit:,.2f})" if args.n_passes > 1 else ""
+            print(f"  trial {trial} (seed={seed}): training profit = ${final_pass_profit:,.2f}{pass_text}")
 
             # Every trial's own model, kept separately -- these are genuinely
             # different Q-tables (different exploration trajectories), not
@@ -154,7 +182,7 @@ def main():
             np.save(trial_dir / f"history_{reward_kind}.npy",
                     np.array([(h["t"], h["price"], h["action"], h["c"], h["d"],
                                h["profit"], h["cumulative_profit"]) for h in history]))
-            trial_profits.append(cumulative_profit)
+            trial_profits.append(final_pass_profit)
             price_bin_edges = edges  # identical across trials (fit_price_bin_edges takes no RNG)
 
         mean_profit = float(np.mean(trial_profits))
@@ -168,10 +196,11 @@ def main():
         np.save(run_dir / f"price_bin_edges_{reward_kind}.npy", price_bin_edges)
         summary["results"][reward_kind] = {
             "n_trials": args.n_trials,
+            "n_passes": args.n_passes,
             "seeds": trial_seeds,
-            "trial_cumulative_profits": trial_profits,
-            "mean_cumulative_profit": mean_profit,
-            "std_cumulative_profit": std_profit,
+            "trial_final_pass_profits": trial_profits,
+            "mean_final_pass_profit": mean_profit,
+            "std_final_pass_profit": std_profit,
         }
 
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))

@@ -71,7 +71,11 @@ def main():
     run_dir = Path(args.run) if args.run else latest_run_dir()
     _, prices = load_price_series(args.data)
 
-    trial_dirs = sorted(run_dir.glob("trial_*"))
+    # trial_NN/ subdirectories may live directly under run_dir, or nested
+    # under run_dir/individual_trials/ if the run was reorganized for
+    # readability (see Experiment 2 in the project's outputs/runs/) --
+    # check both so a re-run after reorganizing doesn't silently find zero.
+    trial_dirs = sorted(run_dir.glob("trial_*")) or sorted((run_dir / "individual_trials").glob("trial_*"))
     if not trial_dirs:
         raise SystemExit(f"No trial_*/ subdirectories found in {run_dir} -- this run predates "
                           f"train.py's --n-trials support; retrain to evaluate it here.")
