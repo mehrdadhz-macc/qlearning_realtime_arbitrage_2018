@@ -13,7 +13,10 @@ import numpy as np
 
 
 def make_price_profit_figure(prices, curves, colors, profit_title, price_label="Price ($/MWh)"):
-    """curves: dict of series label -> (color_key, array), array same length as prices."""
+    """curves: dict of series label -> (color_key, array), array same length as prices.
+    Final cumulative profit is appended to each legend entry AND annotated
+    directly at the end of its curve, so the headline number is readable
+    from the plot itself, not just cross-referenced against a caption."""
     fig, (price_ax, profit_ax) = plt.subplots(
         2, 1, figsize=(10, 6.5), sharex=True, height_ratios=[1, 2])
 
@@ -23,12 +26,19 @@ def make_price_profit_figure(prices, curves, colors, profit_title, price_label="
     price_ax.set_title("Underlying price series", fontsize=10, color="dimgray", loc="left")
 
     for label, (color_key, curve) in curves.items():
-        profit_ax.plot(np.arange(len(curve)), curve, label=label, color=colors[color_key], linewidth=1)
+        color = colors[color_key]
+        final_value = curve[-1]
+        profit_ax.plot(np.arange(len(curve)), curve,
+                       label=f"{label}: ${final_value:,.2f}", color=color, linewidth=1)
+        profit_ax.annotate(f"${final_value:,.2f}", (len(curve) - 1, final_value), color=color,
+                           fontsize=9, fontweight="bold", xytext=(6, 0),
+                           textcoords="offset points", va="center")
     profit_ax.axhline(0, color="gray", linewidth=0.7)
     profit_ax.set_xlabel("Time (hour)")
     profit_ax.set_ylabel("Cumulative profit ($)")
     profit_ax.set_title(profit_title, fontsize=11, loc="left")
     profit_ax.legend()
+    profit_ax.margins(x=0.09)  # room for the end-of-curve annotations
 
     fig.tight_layout()
     return fig

@@ -70,7 +70,9 @@ def main():
         color = colors[reward_kind]
         ax.fill_between(x, lower, upper, color=color, alpha=0.15, linewidth=0)
         ax.plot(x, mean, color=color, linewidth=1.5,
-                label=f"{reward_kind.replace('_', ' ').title()} (mean, n={n_trials})")
+                label=f"{reward_kind.replace('_', ' ').title()} (mean, n={n_trials}): ${mean[-1]:,.2f}")
+        ax.annotate(f"${mean[-1]:,.2f}", (T - 1, mean[-1]), color=color, fontsize=9,
+                    fontweight="bold", xytext=(6, 0), textcoords="offset points", va="center")
 
         band_stats[reward_kind] = {
             "n_trials": n_trials, "final_mean": float(mean[-1]),
@@ -84,6 +86,7 @@ def main():
     ax.set_title(f"Reward 1 vs Reward 2, cumulative profit over time -- "
                  f"mean +/- [{args.lower_pct:g}th, {args.upper_pct:g}th] percentile band across trials")
     ax.legend(loc="upper left")
+    ax.margins(x=0.09)  # room for the end-of-curve annotations
     fig.tight_layout()
     out_path = run_dir / "training_cumulative_profit_over_time_plot.png"
     fig.savefig(out_path, dpi=150)
