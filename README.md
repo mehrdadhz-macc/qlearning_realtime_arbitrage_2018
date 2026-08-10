@@ -111,6 +111,7 @@ scripts/
     plot_best_seed_reward_comparison.py     # Reward 1 vs Reward 2, ONE shared seed, training curves
     plot_best_seed_per_reward.py            # Experiment 1: each reward on its OWN best TRAINING seed, training + held-out
     plot_best_held_out_seed_per_reward.py   # Experiment 3: each reward on its OWN best HELD-OUT seed, training + held-out
+    plot_omg_baseline_2017.py               # Experiment 4: deterministic OMG baseline on the 2017 held-out year
     plot_100seed_distribution.py            # Experiment 2: mean/interval scatter, --which training|held_out
     plot_100seed_cumulative_profit.py       # Experiment 2: mean +/- percentile band over time, all trials
 
@@ -447,12 +448,13 @@ own printed threshold formula while implementing this -- see
 `src/omg_baseline.py`'s module docstring for the three independent
 re-derivations that caught it.
 
-### Experiments 1-3: seed-based training vs. held-out comparisons
+### Experiments 1-4: seed-based comparisons and the OMG baseline
 
-Three follow-up experiments dig into how much a single seed can be
-trusted, each with its own dedicated README in its run directory
-(findings, tables, file listing, and exact reproduction commands -- not
-duplicated here):
+Four follow-up experiments, each with its own dedicated README in its run
+directory (findings, tables, file listing, and exact reproduction
+commands -- not duplicated here). Experiments 1-3 dig into how much a
+single Q-learning seed can be trusted; Experiment 4 is the deterministic
+OMG baseline, kept separate since it has no seed to vary:
 
 - **[Experiment 1: best seed per reward (by training profit)](outputs/runs/20260810_154929_exp1_best_seed_per_reward/README.md)**
   -- each reward trained on the single seed that gave *it* the highest
@@ -471,6 +473,10 @@ duplicated here):
   middling-to-poor *training* performer (Reward 1: $21,739.65 held-out from
   just $803.24 training) -- confirming training and held-out profit are
   close to independent signals for a single seed, in both directions.
+- **[Experiment 4: OMG baseline, held-out 2017](outputs/runs/20260810_164959_exp4_omg_baseline_2017/README.md)**
+  -- the deterministic OMG baseline run once (no seed needed) on the full
+  2017 held-out year: $10,841.02 (1 MW) / $8,753.44 (2 MW), both exceeding
+  Reward 2's 100-trial training mean ($3,208.36, Experiment 2).
 
 Only each run's plots, `params.txt`, and `README.md` are pushed to git
 (see `.gitignore`); the underlying Q-tables, histories, and per-trial

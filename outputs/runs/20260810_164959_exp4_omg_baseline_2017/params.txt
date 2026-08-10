@@ -1,0 +1,27 @@
+Experiment 4: OMG baseline, held-out 2017
+
+Runs the deterministic OMG baseline (src/omg_baseline.py, Qin et al. 2016,
+Wang & Zhang Sec. IV-C's comparison) directly on the 2017 held-out year --
+kept separate from Experiments 1-3, which are all about the Q-learning
+agent's seed-to-seed variance. OMG has no seed: its only "fitting" step is
+a one-time causal calibration of [p_min, p_max] from the first
+720 hours of data/train/isone_rt_hourly_lmp_2016.csv (not iterative
+training -- see src/omg_baseline.py's module docstring), so a single run
+is the complete, reproducible result.
+
+Parameters
+----------
+train_data (calibration only): data/train/isone_rt_hourly_lmp_2016.csv
+test_data (rolled out):        data/test/isone_rt_hourly_lmp_2017.csv
+bin_calibration_hours:         720
+capacity_mwh:                  8.0
+max_rate_mw:                   [1.0, 2.0]
+efficiency_charge:             1.0
+efficiency_discharge:          1.0
+
+Results
+-------
+1 MW: held-out 2017 profit = $10,841.02  (p_min=-155.44, p_max=360.00, W=0.0116405, Gamma=-5.19059)
+2 MW: held-out 2017 profit = $8,753.44  (p_min=-155.44, p_max=360.00, W=0.00776036, Gamma=-4.79373)
+
+See held_out_2017_omg_baseline_plot.png for the cumulative profit curves.
