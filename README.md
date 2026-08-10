@@ -109,7 +109,8 @@ scripts/
   data_plots/
     plot_price_series.py                    # Fig. 1 style raw + moving-average price plot, any --data file
     plot_best_seed_reward_comparison.py     # Reward 1 vs Reward 2, ONE shared seed, training curves
-    plot_best_seed_per_reward.py            # Experiment 1: each reward on its OWN best seed, training + held-out
+    plot_best_seed_per_reward.py            # Experiment 1: each reward on its OWN best TRAINING seed, training + held-out
+    plot_best_held_out_seed_per_reward.py   # Experiment 3: each reward on its OWN best HELD-OUT seed, training + held-out
     plot_100seed_distribution.py            # Experiment 2: mean/interval scatter, --which training|held_out
     plot_100seed_cumulative_profit.py       # Experiment 2: mean +/- percentile band over time, all trials
 
@@ -446,14 +447,14 @@ own printed threshold formula while implementing this -- see
 `src/omg_baseline.py`'s module docstring for the three independent
 re-derivations that caught it.
 
-### Experiment 1 & 2: seed-based training vs. held-out comparisons
+### Experiments 1-3: seed-based training vs. held-out comparisons
 
-Two follow-up experiments dig into how much a single seed can be trusted,
-each with its own dedicated README in its run directory (findings,
-tables, file listing, and exact reproduction commands -- not duplicated
-here):
+Three follow-up experiments dig into how much a single seed can be
+trusted, each with its own dedicated README in its run directory
+(findings, tables, file listing, and exact reproduction commands -- not
+duplicated here):
 
-- **[Experiment 1: best seed per reward](outputs/runs/20260810_154929_exp1_best_seed_per_reward/README.md)**
+- **[Experiment 1: best seed per reward (by training profit)](outputs/runs/20260810_154929_exp1_best_seed_per_reward/README.md)**
   -- each reward trained on the single seed that gave *it* the highest
   training profit; those two Q-tables land on opposite ends of the
   held-out spectrum ($13,318.85 vs. $544.39), showing a training-best seed
@@ -464,6 +465,12 @@ here):
   that edge evaporates on held-out data (53/100 wins, t=1.26, not
   significant) -- the same flip as Experiment 1, now with statistical
   power behind it.
+- **[Experiment 3: best seed per reward (by held-out profit)](outputs/runs/20260810_162224_exp3_best_held_out_seed_per_reward/README.md)**
+  -- the mirror image of Experiment 1: each reward's best-*held-out* seed
+  (found from Experiment 2's data, no new sweep needed) turns out to be a
+  middling-to-poor *training* performer (Reward 1: $21,739.65 held-out from
+  just $803.24 training) -- confirming training and held-out profit are
+  close to independent signals for a single seed, in both directions.
 
 Only each run's plots, `params.txt`, and `README.md` are pushed to git
 (see `.gitignore`); the underlying Q-tables, histories, and per-trial

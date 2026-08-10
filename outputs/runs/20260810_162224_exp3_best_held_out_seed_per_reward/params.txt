@@ -1,0 +1,43 @@
+Experiment 3: best seed PER REWARD, selected by HELD-OUT profit
+====================================================================
+
+Each reward function is trained on the seed that gave IT the highest
+HELD-OUT (2017) profit -- the opposite selection criterion from Experiment
+1 (which picks each reward's best TRAINING seed). Best held-out seeds were
+found by cross-referencing Experiment 2's existing 100-trial paired sweep
+(../20260810_154500_exp2_100seed_distribution/summary.json for seeds +
+training profit, held_out_2017_eval_summary.json for held-out profit;
+trial index i is the same seed in both files) rather than running a new
+sweep.
+
+Parameters (shared, except seed)
+---------------------------------
+data:                  data/train/isone_rt_hourly_lmp_2016.csv
+test_data:             data/test/isone_rt_hourly_lmp_2017.csv
+capacity_mwh:          8.0
+max_rate_mw:           1.0
+n_price_bins (M):      5
+price_bin_method:      quantile
+bin_calibration_hours: 720
+alpha:                 0.5
+gamma:                 0.9
+epsilon:               0.9
+smoothing (eta):       0.001
+efficiency_charge:     1.0
+efficiency_discharge:  1.0
+n_passes:              1
+
+Results
+-------
+Reward 1: seed=345075200
+  held-out profit (2017, frozen greedy): $21,739.65  (highest Reward-1 held-out profit found in the 100-trial sweep)
+  training profit (2016, online):        $803.24
+Reward 2: seed=406886644
+  held-out profit (2017, frozen greedy): $25,388.67  (highest Reward-2 held-out profit found in the 100-trial sweep)
+  training profit (2016, online):        $4,149.10
+
+See training_best_held_out_seed_per_reward_plot.png for the training-time
+curves and held_out_2017_best_held_out_seed_per_reward_plot.png for the
+held-out curves. This is a single seed per reward (not an averaged
+distribution) -- see Experiment 2 (100-seed distribution) for the
+statistical version of this comparison.
