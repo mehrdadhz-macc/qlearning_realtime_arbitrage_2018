@@ -11,7 +11,7 @@ band still shows the full spread at every hour, not just the endpoint.
 
 Usage:
     venv/bin/python3 scripts/data_plots/plot_100seed_cumulative_profit.py \
-        --run-dir outputs/runs/20260810_154500_exp2_100seed_distribution
+        --run-dir outputs/runs/20260810_154500_exp2_1mw_100seed_distribution
 """
 
 import argparse

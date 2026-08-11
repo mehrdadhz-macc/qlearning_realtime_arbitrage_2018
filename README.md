@@ -457,18 +457,18 @@ much a single Q-learning seed can be trusted, at the paper's two battery
 rate configs (1 MW and 2 MW); Experiment 4 is the deterministic OMG
 baseline, kept separate since it has no seed to vary:
 
-- **[Experiment 1: best seed per reward (by training profit)](outputs/runs/20260810_154929_exp1_best_seed_per_reward/README.md)**
+- **[Experiment 1: best seed per reward (by training profit)](outputs/runs/20260810_154929_exp1_1mw_best_seed_per_reward/README.md)**
   -- each reward trained on the single seed that gave *it* the highest
   training profit; those two Q-tables land on opposite ends of the
   held-out spectrum ($13,318.85 vs. $544.39), showing a training-best seed
   is not a reliable indicator of generalization.
-- **[Experiment 2: 100-seed paired distribution](outputs/runs/20260810_154500_exp2_100seed_distribution/README.md)**
+- **[Experiment 2: 100-seed paired distribution](outputs/runs/20260810_154500_exp2_1mw_100seed_distribution/README.md)**
   -- both rewards trained on the same 100 seeds; Reward 2's training-time
   edge is not just significant but universal (100/100 wins, t=23.54), yet
   that edge evaporates on held-out data (53/100 wins, t=1.26, not
   significant) -- the same flip as Experiment 1, now with statistical
   power behind it.
-- **[Experiment 3: best seed per reward (by held-out profit)](outputs/runs/20260810_162224_exp3_best_held_out_seed_per_reward/README.md)**
+- **[Experiment 3: best seed per reward (by held-out profit)](outputs/runs/20260810_162224_exp3_1mw_best_held_out_seed_per_reward/README.md)**
   -- the mirror image of Experiment 1: each reward's best-*held-out* seed
   (found from Experiment 2's data, no new sweep needed) turns out to be a
   middling-to-poor *training* performer (Reward 1: $21,739.65 held-out from

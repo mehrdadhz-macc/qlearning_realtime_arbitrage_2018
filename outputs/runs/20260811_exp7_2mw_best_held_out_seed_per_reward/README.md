@@ -3,7 +3,7 @@
 ## Intuition
 
 Mirror image of [Experiment 5](../20260811_exp5_2mw_best_seed_per_reward/),
-same design as [Experiment 3](../20260810_162224_exp3_best_held_out_seed_per_reward/):
+same design as [Experiment 3](../20260810_162224_exp3_1mw_best_held_out_seed_per_reward/):
 each reward's best-*held-out* seed, found by cross-referencing
 [Experiment 6](../20260811_exp6_2mw_100seed_distribution/)'s 100-trial
 sweep, at 8 MWh / **2 MW**.

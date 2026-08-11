@@ -66,8 +66,9 @@ def main():
     _, prices = load_price_series(args.data)
     _, test_prices = load_price_series(args.test_data)
 
+    rate_tag = f"{args.max_rate_mw:g}mw"
     run_dir = Path(args.out_dir) if args.out_dir else Path("outputs/runs") / (
-        time.strftime("%Y%m%d_%H%M%S") + "_exp1_best_seed_per_reward")
+        time.strftime("%Y%m%d_%H%M%S") + f"_exp1_{rate_tag}_best_seed_per_reward")
     run_dir.mkdir(parents=True, exist_ok=True)
 
     seeds = {"reward_1": args.seed_reward1, "reward_2": args.seed_reward2}

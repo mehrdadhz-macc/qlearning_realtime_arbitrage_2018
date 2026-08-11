@@ -2,7 +2,7 @@
 
 ## Intuition
 
-[Experiment 1](../20260810_154929_exp1_best_seed_per_reward/) is two single
+[Experiment 1](../20260810_154929_exp1_1mw_best_seed_per_reward/) is two single
 trials -- illustrative, not statistical. This experiment trains both Reward
 1 and Reward 2 on the SAME 100 seeds (paired design: trial *i*'s seed is
 identical for both rewards, so the comparison isn't contaminated by
@@ -35,7 +35,7 @@ essentially deterministic.
 Paired diff: mean +$1,122.43, std $8,913.93, **paired t=1.26** (not
 significant, needs \|t\|>1.98), **Reward 2 wins only 53/100** -- barely
 better than a coin flip. This reproduces
-[Experiment 1](../20260810_154929_exp1_best_seed_per_reward/)'s flip at
+[Experiment 1](../20260810_154929_exp1_1mw_best_seed_per_reward/)'s flip at
 full statistical power: whatever makes Reward 2 win so reliably during
 training does not reliably carry over to an unseen year. Also consistent
 with this project's original 100-trial-at-default-hyperparameters finding
@@ -56,10 +56,10 @@ doesn't reliably generalize.
 ```bash
 venv/bin/python3 train.py --data data/train/isone_rt_hourly_lmp_2016.csv --reward both \
   --smoothing 0.001 --n-passes 1 --n-price-bins 5 --n-trials 100 --seed 42 \
-  --out-dir outputs/runs/<new_timestamp>_exp2_100seed_distribution
-venv/bin/python3 evaluate.py --run outputs/runs/<new_timestamp>_exp2_100seed_distribution \
+  --out-dir outputs/runs/<new_timestamp>_exp2_1mw_100seed_distribution
+venv/bin/python3 evaluate.py --run outputs/runs/<new_timestamp>_exp2_1mw_100seed_distribution \
   --data data/test/isone_rt_hourly_lmp_2017.csv
-venv/bin/python3 scripts/data_plots/plot_100seed_distribution.py --run-dir outputs/runs/<new_timestamp>_exp2_100seed_distribution --which training
-venv/bin/python3 scripts/data_plots/plot_100seed_distribution.py --run-dir outputs/runs/<new_timestamp>_exp2_100seed_distribution --which held_out
-venv/bin/python3 scripts/data_plots/plot_100seed_cumulative_profit.py --run-dir outputs/runs/<new_timestamp>_exp2_100seed_distribution
+venv/bin/python3 scripts/data_plots/plot_100seed_distribution.py --run-dir outputs/runs/<new_timestamp>_exp2_1mw_100seed_distribution --which training
+venv/bin/python3 scripts/data_plots/plot_100seed_distribution.py --run-dir outputs/runs/<new_timestamp>_exp2_1mw_100seed_distribution --which held_out
+venv/bin/python3 scripts/data_plots/plot_100seed_cumulative_profit.py --run-dir outputs/runs/<new_timestamp>_exp2_1mw_100seed_distribution
 ```

@@ -5,7 +5,7 @@ Each reward function is trained on the seed that gave IT the highest
 HELD-OUT (2017) profit -- the opposite selection criterion from Experiment
 1 (which picks each reward's best TRAINING seed). Best held-out seeds were
 found by cross-referencing Experiment 2's existing 100-trial paired sweep
-(../20260810_154500_exp2_100seed_distribution/summary.json for seeds +
+(../20260810_154500_exp2_1mw_100seed_distribution/summary.json for seeds +
 training profit, held_out_2017_eval_summary.json for held-out profit;
 trial index i is the same seed in both files) rather than running a new
 sweep.

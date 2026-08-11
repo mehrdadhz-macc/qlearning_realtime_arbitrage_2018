@@ -2,7 +2,7 @@
 
 ## Intuition
 
-Same question as [Experiment 1](../20260810_154929_exp1_best_seed_per_reward/),
+Same question as [Experiment 1](../20260810_154929_exp1_1mw_best_seed_per_reward/),
 at the paper's other battery configuration: 8 MWh capacity, **2 MW**
 charge/discharge rate (vs. 1 MW everywhere else in this project). Each
 reward trained on the seed that gave *it* the highest training profit,

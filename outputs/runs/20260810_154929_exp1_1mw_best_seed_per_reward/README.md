@@ -33,11 +33,11 @@ held-out spectrum.
 
 This is a single seed per reward, not an averaged distribution -- treat it
 as illustrative of these two specific Q-tables, not a statistical claim.
-See `../20260810_154500_exp2_100seed_distribution/` for the 100-seed
+See `../20260810_154500_exp2_1mw_100seed_distribution/` for the 100-seed
 version of this same question, which reproduces the same flip with
 statistical power (training: t=23.54, Reward 2 wins 100/100; held-out:
 t=1.26, not significant, Reward 2 wins only 53/100). See
-`../20260810_162224_exp3_best_held_out_seed_per_reward/` for the mirror
+`../20260810_162224_exp3_1mw_best_held_out_seed_per_reward/` for the mirror
 image of this experiment -- selecting each reward's best *held-out* seed
 instead, and checking its training profile.
 

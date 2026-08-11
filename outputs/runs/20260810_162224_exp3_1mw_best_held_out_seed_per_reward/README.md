@@ -2,11 +2,11 @@
 
 ## Intuition
 
-[Experiment 1](../20260810_154929_exp1_best_seed_per_reward/) picks each
+[Experiment 1](../20260810_154929_exp1_1mw_best_seed_per_reward/) picks each
 reward's best *training* seed and checks how it does held-out. This
 experiment flips the selection criterion: pick each reward's best
 *held-out* seed instead, found by cross-referencing
-[Experiment 2](../20260810_154500_exp2_100seed_distribution/)'s existing
+[Experiment 2](../20260810_154500_exp2_1mw_100seed_distribution/)'s existing
 100-trial paired sweep (no new sweep needed -- just the argmax of
 `held_out_2017_eval_summary.json`'s profits, matched back to
 `summary.json`'s seed list by trial index). Question: does the training

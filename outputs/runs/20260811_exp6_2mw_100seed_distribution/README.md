@@ -2,7 +2,7 @@
 
 ## Intuition
 
-Same design as [Experiment 2](../20260810_154500_exp2_100seed_distribution/):
+Same design as [Experiment 2](../20260810_154500_exp2_1mw_100seed_distribution/):
 100 paired trials (same seed used for both rewards in each trial), same
 hyperparameters (`--smoothing 0.001 --n-price-bins 5 --n-passes 1`), but
 at the paper's other battery configuration -- 8 MWh, **2 MW** rate instead

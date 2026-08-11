@@ -6,7 +6,7 @@ Companion to plot_best_seed_per_reward.py (which uses each reward's best
 TRAINING seed). Here the selection criterion is flipped: which seed gives
 each reward the highest profit on the held-out 2017 year, found by
 cross-referencing Experiment 2's existing 100-trial paired sweep
-(outputs/runs/20260810_154500_exp2_100seed_distribution/summary.json for
+(outputs/runs/20260810_154500_exp2_1mw_100seed_distribution/summary.json for
 seeds + training profit, held_out_2017_eval_summary.json for held-out
 profit -- trial index i matches the same seed in both files) rather than
 re-running a new sweep. Reward 1's best-held-out trial used seed 345075200
@@ -64,8 +64,9 @@ def main():
     _, prices = load_price_series(args.data)
     _, test_prices = load_price_series(args.test_data)
 
+    rate_tag = f"{args.max_rate_mw:g}mw"
     run_dir = Path(args.out_dir) if args.out_dir else Path("outputs/runs") / (
-        time.strftime("%Y%m%d_%H%M%S") + "_exp3_best_held_out_seed_per_reward")
+        time.strftime("%Y%m%d_%H%M%S") + f"_exp3_{rate_tag}_best_held_out_seed_per_reward")
     run_dir.mkdir(parents=True, exist_ok=True)
 
     seeds = {"reward_1": args.seed_reward1, "reward_2": args.seed_reward2}
@@ -124,7 +125,7 @@ Each reward function is trained on the seed that gave IT the highest
 HELD-OUT (2017) profit -- the opposite selection criterion from Experiment
 1 (which picks each reward's best TRAINING seed). Best held-out seeds were
 found by cross-referencing Experiment 2's existing 100-trial paired sweep
-(../20260810_154500_exp2_100seed_distribution/summary.json for seeds +
+(../20260810_154500_exp2_1mw_100seed_distribution/summary.json for seeds +
 training profit, held_out_2017_eval_summary.json for held-out profit;
 trial index i is the same seed in both files) rather than running a new
 sweep.
@@ -167,7 +168,7 @@ statistical version of this comparison.
     summary = {"data": args.data, "test_data": args.test_data, "args": vars(args), "results": results,
                "note": "each reward trained on its own independently-best HELD-OUT seed, "
                        "found by cross-referencing Experiment 2's 100-trial sweep "
-                       "(../20260810_154500_exp2_100seed_distribution/)"}
+                       "(../20260810_154500_exp2_1mw_100seed_distribution/)"}
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     print(f"Run artefacts written to {run_dir}")
 

@@ -10,9 +10,9 @@ to be an honest summary of the spread, so individual trials stay visible.
 
 Usage:
     venv/bin/python3 scripts/data_plots/plot_100seed_distribution.py \
-        --run-dir outputs/runs/20260810_154500_exp2_100seed_distribution --which training
+        --run-dir outputs/runs/20260810_154500_exp2_1mw_100seed_distribution --which training
     venv/bin/python3 scripts/data_plots/plot_100seed_distribution.py \
-        --run-dir outputs/runs/20260810_154500_exp2_100seed_distribution --which held_out
+        --run-dir outputs/runs/20260810_154500_exp2_1mw_100seed_distribution --which held_out
 """
 
 import argparse
