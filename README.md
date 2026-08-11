@@ -448,13 +448,14 @@ own printed threshold formula while implementing this -- see
 `src/omg_baseline.py`'s module docstring for the three independent
 re-derivations that caught it.
 
-### Experiments 1-4: seed-based comparisons and the OMG baseline
+### Experiments 1-7: seed-based comparisons and the OMG baseline
 
-Four follow-up experiments, each with its own dedicated README in its run
-directory (findings, tables, file listing, and exact reproduction
-commands -- not duplicated here). Experiments 1-3 dig into how much a
-single Q-learning seed can be trusted; Experiment 4 is the deterministic
-OMG baseline, kept separate since it has no seed to vary:
+Seven follow-up experiments, each with its own dedicated README in its
+run directory (findings, tables, file listing, and exact reproduction
+commands -- not duplicated here). Experiments 1-3 and 5-7 dig into how
+much a single Q-learning seed can be trusted, at the paper's two battery
+rate configs (1 MW and 2 MW); Experiment 4 is the deterministic OMG
+baseline, kept separate since it has no seed to vary:
 
 - **[Experiment 1: best seed per reward (by training profit)](outputs/runs/20260810_154929_exp1_best_seed_per_reward/README.md)**
   -- each reward trained on the single seed that gave *it* the highest
@@ -477,6 +478,21 @@ OMG baseline, kept separate since it has no seed to vary:
   -- the deterministic OMG baseline run once (no seed needed) on the full
   2017 held-out year: $10,841.02 (1 MW) / $8,753.44 (2 MW), both exceeding
   Reward 2's 100-trial training mean ($3,208.36, Experiment 2).
+- **[Experiment 5: best seed per reward by training profit, 2 MW](outputs/runs/20260811_exp5_2mw_best_seed_per_reward/README.md)**
+  -- Experiment 1's mirror at 2 MW, using the SAME two best-training seeds
+  found at 1 MW. The generalization gap is even more extreme: Reward 2's
+  best-training seed doesn't just underperform held-out, its held-out
+  curve goes flat for the entire year (-$281.10), while Reward 1's same
+  seed climbs smoothly to $10,155.82.
+- **[Experiment 6: 100-seed paired distribution, 2 MW](outputs/runs/20260811_exp6_2mw_100seed_distribution/README.md)**
+  -- Experiment 2's mirror at 2 MW. Training still favors Reward 2 (99/100
+  wins, t=18.07), but held-out data doesn't just lose significance like at
+  1 MW -- it **flips decisively against Reward 2** ($3,998.89 vs. Reward
+  1's $11,554.37, paired t=-7.09, Reward 1 wins 75/100).
+- **[Experiment 7: best seed per reward by held-out profit, 2 MW](outputs/runs/20260811_exp7_2mw_best_held_out_seed_per_reward/README.md)**
+  -- Experiment 3's mirror at 2 MW. Reward 1's best-held-out seed
+  ($30,629.72) actually *lost* money in training (-$3,399.76) -- the
+  starkest training/held-out independence example in this project.
 
 Only each run's plots, `params.txt`, and `README.md` are pushed to git
 (see `.gitignore`); the underlying Q-tables, histories, and per-trial
