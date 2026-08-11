@@ -30,11 +30,13 @@ n_passes:              1
 Results
 -------
 Reward 1: seed=345075200
-  held-out profit (2017, frozen greedy): $21,739.65  (highest Reward-1 held-out profit found in the 100-trial sweep)
-  training profit (2016, online):        $803.24
+  held-out profit (2017, frozen greedy):          $21,739.65  (highest Reward-1 held-out profit found in the 100-trial sweep)
+  training profit (2016, online, epsilon=0.9):    $803.24
+  greedy-after-training profit (2016, epsilon=0): $17,142.35
 Reward 2: seed=406886644
-  held-out profit (2017, frozen greedy): $25,388.67  (highest Reward-2 held-out profit found in the 100-trial sweep)
-  training profit (2016, online):        $4,149.10
+  held-out profit (2017, frozen greedy):          $25,388.67  (highest Reward-2 held-out profit found in the 100-trial sweep)
+  training profit (2016, online, epsilon=0.9):    $4,149.10
+  greedy-after-training profit (2016, epsilon=0): $19,262.51
 
 See training_best_held_out_seed_per_reward_plot.png for the training-time
 curves and held_out_2017_best_held_out_seed_per_reward_plot.png for the

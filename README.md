@@ -217,6 +217,17 @@ Runs from before `--n-trials` was added (flat `q_table_*.npy` directly under
 the run directory, no `trial_NN/` subdirectories) aren't compatible with the
 current `evaluate.py` -- retrain to pick up the new layout.
 
+`--data` isn't restricted to the held-out year -- pointing it at the
+*training* series itself (with `--label greedy_2016` to avoid overwriting
+the held-out outputs) answers a different, important question: since
+epsilon=0.9 never decays during training (Algorithm 1), the raw training
+profit reported by `train.py` is dominated by random exploration, not a
+clean read of what the learned Q-table alone achieved. A greedy
+(epsilon=0) replay of the final Q-table on the SAME data it trained on
+isolates that -- see "'Training profit' is mostly exploration noise" in
+Known findings below, and Experiments 1-3/5-7, all of which show both
+numbers side by side.
+
 ## Deviations / assumptions (where the paper is ambiguous)
 
 - **Algorithm 1's hyperparameter line** is printed as "alpha=0.5, alpha=0.9,
@@ -431,6 +442,41 @@ paper's headline number looks like it may simply be one favorable
 single-trial report, not evidence of a systematic difference from this
 implementation.
 
+### "Training profit" is mostly exploration noise, not learned-policy quality
+
+A follow-up check revealed that even that explanation understates how
+noisy the training-time number is. Epsilon=0.9 never decays during
+training (Algorithm 1's own initialization) -- so roughly 90% of every
+action in a single training pass is random exploration, not the agent
+exploiting what it has learned. The paper's Fig. 4 (and every "training
+profit" figure in this README and every experiment) reports cumulative
+profit *during that mostly-random pass*, not a clean measurement of the
+final Q-table's quality.
+
+Proof: take seed 1455819991's Q-table -- the one whose $7,414.94 training
+profit nearly matched the paper's own Fig. 4 number, cited above as
+evidence of a "lucky draw" -- freeze it (epsilon=0, no more learning) and
+replay it greedily on the SAME 2016 data it trained on. Result: **$720.87**.
+Not $7,414.94. The learned policy itself is nearly worthless; the
+$7,414.94 figure was almost entirely random-exploration-phase luck, not a
+good policy that happened to get reported. Conversely, seed 1688060240's
+policy is *understated* by its own training number ($5,956.68 raw vs.
+$11,631.33 greedy). Both directions confirm the same thing: raw training
+profit and actual learned-policy quality are only loosely related here.
+
+This changes how to read the whole "one lucky trial" story above: it's not
+that the paper caught a genuinely good policy in one favorable report --
+it's that *any* single training-time number, good or bad, is dominated by
+which random actions happened to get taken, largely independent of what
+the Q-table was quietly learning underneath. The more reliable read of
+learned-policy quality is a **greedy replay of the final Q-table**, on
+either the training data itself (`evaluate.py --data data/train/... --label
+greedy_2016`) or the held-out year -- both strip out the exploration noise,
+and (see Experiments 1-3, 5-7) tend to agree with each other far more than
+either agrees with the raw training number. Every training-profit plot in
+this project's experiments now shows both numbers side by side for exactly
+this reason.
+
 ### OMG baseline (Sec. IV-C)
 
 `evaluate_omg_baseline.py`, 8 MWh battery, causal [p_min, p_max] estimated
@@ -461,7 +507,9 @@ baseline, kept separate since it has no seed to vary:
   -- each reward trained on the single seed that gave *it* the highest
   training profit; those two Q-tables land on opposite ends of the
   held-out spectrum ($13,318.85 vs. $544.39), showing a training-best seed
-  is not a reliable indicator of generalization.
+  is not a reliable indicator of generalization. Also the source of the
+  greedy-after-training finding above: Reward 2's seed, greedily replayed
+  on 2016, is worth only $720.87 -- not its $7,414.94 training number.
 - **[Experiment 2: 100-seed paired distribution](outputs/runs/20260810_154500_exp2_1mw_100seed_distribution/README.md)**
   -- both rewards trained on the same 100 seeds; Reward 2's training-time
   edge is not just significant but universal (100/100 wins, t=23.54), yet
@@ -471,9 +519,11 @@ baseline, kept separate since it has no seed to vary:
 - **[Experiment 3: best seed per reward (by held-out profit)](outputs/runs/20260810_162224_exp3_1mw_best_held_out_seed_per_reward/README.md)**
   -- the mirror image of Experiment 1: each reward's best-*held-out* seed
   (found from Experiment 2's data, no new sweep needed) turns out to be a
-  middling-to-poor *training* performer (Reward 1: $21,739.65 held-out from
-  just $803.24 training) -- confirming training and held-out profit are
-  close to independent signals for a single seed, in both directions.
+  middling-to-poor *raw training* performer (Reward 1: $21,739.65 held-out
+  from just $803.24 raw training) -- but its greedy-after-training profit
+  ($17,142.35) shows it learned a genuinely strong policy, confirming *raw*
+  training and held-out profit are close to independent signals, while
+  greedy-after-training profit agrees with held-out much more closely.
 - **[Experiment 4: OMG baseline, held-out 2017](outputs/runs/20260810_164959_exp4_omg_baseline_2017/README.md)**
   -- the deterministic OMG baseline run once (no seed needed) on the full
   2017 held-out year: $10,841.02 (1 MW) / $8,753.44 (2 MW), both exceeding
@@ -481,18 +531,24 @@ baseline, kept separate since it has no seed to vary:
 - **[Experiment 5: best seed per reward by training profit, 2 MW](outputs/runs/20260811_exp5_2mw_best_seed_per_reward/README.md)**
   -- Experiment 1's mirror at 2 MW, using the SAME two best-training seeds
   found at 1 MW. The generalization gap is even more extreme: Reward 2's
-  best-training seed doesn't just underperform held-out, its held-out
-  curve goes flat for the entire year (-$281.10), while Reward 1's same
-  seed climbs smoothly to $10,155.82.
+  best-training seed (the single highest raw training profit of all 100
+  trials, $11,050.14) doesn't just underperform held-out, its held-out
+  curve goes flat for the entire year (-$281.10) -- and its
+  greedy-after-training profit is -$238.14, confirming the raw number was
+  pure exploration-noise luck, not a good policy that failed to transfer.
 - **[Experiment 6: 100-seed paired distribution, 2 MW](outputs/runs/20260811_exp6_2mw_100seed_distribution/README.md)**
-  -- Experiment 2's mirror at 2 MW. Training still favors Reward 2 (99/100
-  wins, t=18.07), but held-out data doesn't just lose significance like at
-  1 MW -- it **flips decisively against Reward 2** ($3,998.89 vs. Reward
-  1's $11,554.37, paired t=-7.09, Reward 1 wins 75/100).
+  -- Experiment 2's mirror at 2 MW. Raw training still favors Reward 2
+  (99/100 wins, t=18.07), but held-out data doesn't just lose significance
+  like at 1 MW -- it **flips decisively against Reward 2** ($3,998.89 vs.
+  Reward 1's $11,554.37, paired t=-7.09, Reward 1 wins 75/100). The
+  greedy-after-training means agree with the held-out ranking, not the raw
+  training ranking (Reward 1 $11,284.61 vs. Reward 2 $3,679.68).
 - **[Experiment 7: best seed per reward by held-out profit, 2 MW](outputs/runs/20260811_exp7_2mw_best_held_out_seed_per_reward/README.md)**
   -- Experiment 3's mirror at 2 MW. Reward 1's best-held-out seed
-  ($30,629.72) actually *lost* money in training (-$3,399.76) -- the
-  starkest training/held-out independence example in this project.
+  ($30,629.72) actually *lost* money on the raw training metric
+  (-$3,399.76) -- but its greedy-after-training profit ($28,065.44) shows
+  it learned a genuinely strong policy all along, just buried under
+  exploration noise.
 
 Only each run's plots, `params.txt`, and `README.md` are pushed to git
 (see `.gitignore`); the underlying Q-tables, histories, and per-trial

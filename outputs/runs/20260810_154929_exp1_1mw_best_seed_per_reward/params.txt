@@ -14,9 +14,13 @@ single-pass config (eta=0.001, M=5, n_passes=1):
                                              individual seed differs)
 
 Each trained Q-table is then ALSO frozen (epsilon=0, no further learning)
-and replayed greedily on data/test/isone_rt_hourly_lmp_2017.csv, a year
-the agent never trained on -- an additional check beyond what the paper
-itself does (the paper never holds out a test year; see README).
+and replayed greedily two ways: (1) on the SAME 2016 training data, to
+isolate the learned policy's own quality from the online run's epsilon=0.9
+exploration noise (epsilon never decays during training -- Algorithm 1 --
+so the raw training-profit number is NOT a clean read of what was learned);
+(2) on data/test/isone_rt_hourly_lmp_2017.csv, a year the agent never
+trained on at all -- an additional check beyond what the paper itself does
+(the paper never holds out a test year; see README).
 
 Parameters (shared, except seed)
 ---------------------------------
@@ -38,14 +42,18 @@ n_passes:              1
 Results
 -------
 Reward 1: seed=1688060240
-  training profit (2016, online):        $5,956.68  (highest Reward-1 profit found in the 50-trial sweep)
-  held-out profit (2017, frozen greedy): $13,318.85
+  training profit (2016, online, epsilon=0.9):  $5,956.68  (highest Reward-1 profit found in the 50-trial sweep)
+  greedy-after-training profit (2016, epsilon=0): $11,631.33
+  held-out profit (2017, frozen greedy):        $13,318.85
 Reward 2: seed=1455819991
-  training profit (2016, online):        $7,414.94  (highest Reward-2 profit found in the 50-trial sweep)
-  held-out profit (2017, frozen greedy): $544.39
+  training profit (2016, online, epsilon=0.9):  $7,414.94  (highest Reward-2 profit found in the 50-trial sweep)
+  greedy-after-training profit (2016, epsilon=0): $720.87
+  held-out profit (2017, frozen greedy):        $544.39
 
-See training_best_seed_per_reward_plot.png for the training-time curves and
-held_out_2017_best_seed_per_reward_plot.png for the held-out curves. This is
-a single seed per reward (not an averaged distribution), so held-out
-generalization here is illustrative of these two specific Q-tables, not a
-statistical claim -- see Experiment 2 (100-seed distribution) for that.
+See training_best_seed_per_reward_plot.png for the training-time curves
+(legend shows both the raw online-epsilon=0.9 profit and the
+greedy-after-training profit) and held_out_2017_best_seed_per_reward_plot.png
+for the held-out curves. This is a single seed per reward (not an averaged
+distribution), so held-out generalization here is illustrative of these
+two specific Q-tables, not a statistical claim -- see Experiment 2
+(100-seed distribution) for that.

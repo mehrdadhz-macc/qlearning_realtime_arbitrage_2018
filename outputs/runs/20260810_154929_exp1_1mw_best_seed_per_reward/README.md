@@ -18,10 +18,10 @@ README).
 
 ## Finding: no -- and it can flip entirely
 
-| | seed | training profit (2016) | held-out profit (2017) |
-|---|---|---|---|
-| Reward 1 | 1688060240 | $5,956.68 (highest Reward-1 seed found) | **$13,318.85** |
-| Reward 2 | 1455819991 | $7,414.94 (highest Reward-2 seed found) | **$544.39** |
+| | seed | training profit (2016, online, epsilon=0.9) | greedy-after-training profit (2016, epsilon=0) | held-out profit (2017) |
+|---|---|---|---|---|
+| Reward 1 | 1688060240 | $5,956.68 (highest Reward-1 seed found) | **$11,631.33** | **$13,318.85** |
+| Reward 2 | 1455819991 | $7,414.94 (highest Reward-2 seed found) | **$720.87** | **$544.39** |
 
 Reward 1's best-training seed generalizes to a smooth, steady climb all
 year on 2017. Reward 2's best-training seed -- the one that nearly matched
@@ -30,6 +30,20 @@ even on 2017, staying flat near $0-800 the whole year. A seed picked purely
 for training performance is not a reliable indicator of generalization,
 and here the two rewards' best-training seeds land on opposite ends of the
 held-out spectrum.
+
+**Important correction to how to read that "nearly matched the paper"
+result**: it is NOT evidence that this seed found a genuinely good policy
+that merely failed to generalize. Freezing Reward 2's seed-1455819991
+Q-table and replaying it greedily (epsilon=0) on the SAME 2016 data it
+trained on gives only **$720.87** -- barely above zero, and in the same
+range as its held-out result. The $7,414.94 "training profit" was almost
+entirely epsilon=0.9 exploration-phase luck (epsilon never decays --
+Algorithm 1), not a signal that a good policy was learned and then failed
+to transfer. Reward 1's seed shows the opposite pattern: its raw training
+number ($5,956.68) *understates* what it actually learned ($11,631.33
+greedy) -- both directions confirm training profit is a poor proxy for
+learned-policy quality here. See `training_best_seed_per_reward_plot.png`'s
+legend for both numbers side by side.
 
 This is a single seed per reward, not an averaged distribution -- treat it
 as illustrative of these two specific Q-tables, not a statistical claim.
@@ -43,8 +57,9 @@ instead, and checking its training profile.
 
 ## Files
 
-- `training_best_seed_per_reward_plot.png` -- cumulative training profit (2016), both seeds
+- `training_best_seed_per_reward_plot.png` -- cumulative training profit (2016), both seeds; legend shows both the raw online (epsilon=0.9) and greedy-after-training (epsilon=0) final profit
 - `held_out_2017_best_seed_per_reward_plot.png` -- cumulative held-out profit (2017), same two Q-tables
+- `greedy_2016_cumulative_profit_curve_reward_*.npy` -- the greedy-after-training rollout curves
 - `params.txt` -- exact hyperparameters and results, and reproduction command context
 
 ## Reproduce

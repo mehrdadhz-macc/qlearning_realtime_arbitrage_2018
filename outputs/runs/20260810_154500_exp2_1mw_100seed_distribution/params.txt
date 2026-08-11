@@ -73,3 +73,23 @@ coin flip (53/100) -- consistent with this project's earlier finding at
 the original untuned hyperparameters (see README "Known findings"):
 Reward 2's edge is real and large during training, but doesn't reliably
 carry over to an unseen year.
+
+Greedy-after-training (2016) evaluation -- isolating learned-policy quality
+------------------------------------------------------------------------------
+Epsilon=0.9 never decays during training (Algorithm 1), so ~90% of every
+trial's actions are random exploration -- the raw training number above is
+dominated by exploration cost, not a clean read of what the learned
+Q-table alone achieved. Each trial's final Q-table was ALSO frozen and
+replayed greedily (epsilon=0) on the SAME 2016 data it trained on
+(evaluate.py --data data/train/isone_rt_hourly_lmp_2016.csv --label
+greedy_2016). See greedy_2016_eval_plot.png / greedy_2016_eval_summary.json.
+
+Reward 1: mean $5,997.41   std $5,100.81
+Reward 2: mean $6,745.48   std $5,969.31
+
+Both means are far above their raw training counterparts ($1,264.31 /
+$3,208.36) and much closer to each other -- and to the held-out means
+above ($6,590.73 / $7,713.17) -- than either is to its own raw training
+number. Greedy-after-training profit (on either 2016 or 2017) is a far
+more mutually consistent measure of what was learned than the raw online
+training number ever was.

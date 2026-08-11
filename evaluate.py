@@ -1,4 +1,6 @@
-"""Greedily evaluate every trial's trained Q-table on a held-out price series.
+"""Greedily evaluate every trial's trained Q-table on a price series --
+defaults to the held-out test year, but works on any series via --data
+(see --label below).
 
 The paper itself never holds out a test year -- Fig. 4's "results" ARE the
 training run. Here we additionally freeze each trial's learned Q-table
@@ -6,14 +8,24 @@ training run. Here we additionally freeze each trial's learned Q-table
 trained on, which is a stronger and more standard check of whether the
 learned policy generalizes.
 
+This same greedy-rollout machinery is also the right tool for a DIFFERENT
+question: since epsilon=0.9 never decays during training (Algorithm 1),
+train.py's own reported "training profit" is dominated by random
+exploration, not a clean read of what the learned Q-table alone achieved.
+Pointing --data at the TRAINING series itself (with --label greedy_2016 or
+similar) answers that -- freeze each trial's final Q-table and replay it
+greedily on the SAME data it trained on, isolating the learned policy's
+quality from the online exploration noise.
+
 train.py's --n-trials saves one Q-table per trial_NN/ subdirectory under the
-run. This script evaluates ALL of them and reports the mean +/- std held-out
-profit across trials -- the expected-value estimate, not any single trial's
+run. This script evaluates ALL of them and reports the mean +/- std profit
+across trials -- the expected-value estimate, not any single trial's
 number (which, per this project's own README, can vary a lot just from the
 training seed).
 
 Usage:
     venv/bin/python3 evaluate.py --run outputs/runs/<timestamp> --data data/test/isone_rt_hourly_lmp_2017.csv
+    venv/bin/python3 evaluate.py --run outputs/runs/<timestamp> --data data/train/isone_rt_hourly_lmp_2016.csv --label greedy_2016
 """
 
 import argparse
@@ -26,6 +38,7 @@ import numpy as np
 from src.data_loader import load_price_series
 from src.environment import StorageArbitrageEnv
 from src.qlearning_agent import QLearningAgent
+from scripts.data_plots._plot_helpers import money
 
 
 def latest_run_dir():
@@ -60,6 +73,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", default=None, help="Run directory (default: most recent under outputs/runs)")
     parser.add_argument("--data", default="data/test/isone_rt_hourly_lmp_2017.csv")
+    parser.add_argument("--label", default="held_out_2017",
+                         help="Prefix for output files (<label>_eval_plot.png, <label>_eval_summary.json) "
+                              "and the plot title -- change this when pointing --data somewhere other than "
+                              "the default held-out test year (e.g. 'greedy_2016' for a training-data eval), "
+                              "so outputs never collide or get mislabeled")
     parser.add_argument("--capacity-mwh", type=float, default=8.0)
     parser.add_argument("--max-rate-mw", type=float, default=1.0)
     parser.add_argument("--efficiency-charge", type=float, default=1.0,
@@ -80,7 +98,7 @@ def main():
         raise SystemExit(f"No trial_*/ subdirectories found in {run_dir} -- this run predates "
                           f"train.py's --n-trials support; retrain to evaluate it here.")
     print(f"Evaluating run {run_dir} ({len(trial_dirs)} trial(s)) on "
-          f"{len(prices)} held-out hours from {args.data}")
+          f"{len(prices)} hours from {args.data} (label={args.label})")
 
     fig, (price_ax, profit_ax) = plt.subplots(2, 1, figsize=(10, 6.5), sharex=True, height_ratios=[1, 2])
     hours_axis = np.arange(len(prices))
@@ -120,7 +138,7 @@ def main():
         final_profits = curves[:, -1]
         mean_profit, std_profit = float(final_profits.mean()), float(final_profits.std())
 
-        print(f"  {reward_kind}: mean held-out profit over {len(curves)} trial(s) = "
+        print(f"  {reward_kind}: mean {args.label} profit over {len(curves)} trial(s) = "
               f"${mean_profit:,.2f} (std ${std_profit:,.2f})")
         for i, p in enumerate(final_profits):
             print(f"    trial {i}: ${p:,.2f}")
@@ -137,15 +155,15 @@ def main():
         profit_ax.fill_between(hours, mean_curve - std_curve, mean_curve + std_curve,
                                 alpha=0.2, color=color, linewidth=0)
         profit_ax.plot(hours, mean_curve, color=color,
-                        label=f"{reward_kind} (mean of {len(curves)} trials): ${mean_curve[-1]:,.2f}")
-        profit_ax.annotate(f"${mean_curve[-1]:,.2f}", (len(mean_curve) - 1, mean_curve[-1]), color=color,
+                        label=f"{reward_kind} (mean of {len(curves)} trials): {money(mean_curve[-1])}")
+        profit_ax.annotate(money(mean_curve[-1]), (len(mean_curve) - 1, mean_curve[-1]), color=color,
                             fontsize=9, fontweight="bold", xytext=(6, 0),
                             textcoords="offset points", va="center")
 
     profit_ax.axhline(0, color="gray", linewidth=0.7)
     profit_ax.set_xlabel("Time (hour)")
     profit_ax.set_ylabel("Cumulative profit ($)")
-    profit_ax.set_title("Held-out evaluation -- mean +/- 1 std across trials (greedy policy, frozen Q-tables)",
+    profit_ax.set_title(f"{args.label} evaluation -- mean +/- 1 std across trials (greedy policy, frozen Q-tables)",
                          fontsize=11, loc="left")
     profit_ax.legend()
     profit_ax.margins(x=0.09)  # room for the end-of-curve annotations
@@ -154,11 +172,11 @@ def main():
     # Kept inside the run's own directory (alongside q_table_*.npy,
     # summary.json, etc.) rather than a separate top-level outputs/eval_plots/
     # -- everything about one run's performance lives in one place.
-    out_path = run_dir / "held_out_2017_eval_plot.png"
+    out_path = run_dir / f"{args.label}_eval_plot.png"
     fig.savefig(out_path, dpi=150)
     print(f"Saved plot to {out_path}")
 
-    (run_dir / "held_out_2017_eval_summary.json").write_text(
+    (run_dir / f"{args.label}_eval_summary.json").write_text(
         json.dumps({"data": args.data, "results": eval_results}, indent=2))
 
 

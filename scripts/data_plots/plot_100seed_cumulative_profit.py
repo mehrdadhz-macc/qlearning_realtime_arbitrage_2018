@@ -27,6 +27,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.data_loader import load_price_series
+from scripts.data_plots._plot_helpers import money
 
 
 def load_curves(run_dir, reward_kind):
@@ -54,6 +55,21 @@ def main():
     colors = {"reward_1": "tab:red", "reward_2": "tab:blue"}
     _, prices = load_price_series(args.data)
 
+    # epsilon=0.9 never decays during training (Algorithm 1), so this
+    # curve's own endpoint is dominated by random exploration cost, not a
+    # clean read of what the learned Q-tables achieved. If
+    # greedy_2016_eval_summary.json exists (evaluate.py run with --data
+    # pointed at the training series and --label greedy_2016), show that
+    # mean in the legend alongside the online training mean.
+    greedy_means = None
+    greedy_path = run_dir / "greedy_2016_eval_summary.json"
+    if greedy_path.exists():
+        greedy_summary = json.loads(greedy_path.read_text())
+        greedy_means = {
+            "reward_1": float(np.mean(greedy_summary["results"]["reward_1"]["trial_final_profits"])),
+            "reward_2": float(np.mean(greedy_summary["results"]["reward_2"]["trial_final_profits"])),
+        }
+
     fig, (price_ax, ax) = plt.subplots(2, 1, figsize=(10, 7), sharex=True, height_ratios=[1, 2])
     price_ax.plot(np.arange(len(prices)), prices, color="tab:gray", linewidth=0.5)
     price_ax.set_ylabel("Price ($/MWh)")
@@ -68,16 +84,18 @@ def main():
 
         x = np.arange(T)
         color = colors[reward_kind]
+        legend_suffix = f" (greedy after training: {money(greedy_means[reward_kind])})" if greedy_means else ""
         ax.fill_between(x, lower, upper, color=color, alpha=0.15, linewidth=0)
         ax.plot(x, mean, color=color, linewidth=1.5,
-                label=f"{reward_kind.replace('_', ' ').title()} (mean, n={n_trials}): ${mean[-1]:,.2f}")
-        ax.annotate(f"${mean[-1]:,.2f}", (T - 1, mean[-1]), color=color, fontsize=9,
+                label=f"{reward_kind.replace('_', ' ').title()} (mean, n={n_trials}): {money(mean[-1])}{legend_suffix}")
+        ax.annotate(money(mean[-1]), (T - 1, mean[-1]), color=color, fontsize=9,
                     fontweight="bold", xytext=(6, 0), textcoords="offset points", va="center")
 
         band_stats[reward_kind] = {
             "n_trials": n_trials, "final_mean": float(mean[-1]),
             f"final_p{args.lower_pct:g}": float(lower[-1]),
             f"final_p{args.upper_pct:g}": float(upper[-1]),
+            "greedy_after_training_mean": greedy_means[reward_kind] if greedy_means else None,
         }
 
     ax.axhline(0, color="gray", linewidth=0.7)

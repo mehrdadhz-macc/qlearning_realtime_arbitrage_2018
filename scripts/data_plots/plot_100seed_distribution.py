@@ -17,12 +17,17 @@ Usage:
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+
+from _plot_helpers import money
 
 SOURCES = {
     "training": {
@@ -56,25 +61,44 @@ def main():
     n = len(r1)
     assert len(r2) == n
 
+    # For training profit specifically: epsilon=0.9 never decays (Algorithm
+    # 1), so the raw online number is dominated by random exploration cost,
+    # not a clean read of what the learned Q-table achieved. If a
+    # greedy_2016_eval_summary.json exists (evaluate.py run with --data
+    # pointed at the training series and --label greedy_2016), show that
+    # mean alongside the training mean for direct comparison.
+    greedy_means = None
+    if args.which == "training":
+        greedy_path = run_dir / "greedy_2016_eval_summary.json"
+        if greedy_path.exists():
+            greedy_summary = json.loads(greedy_path.read_text())
+            greedy_means = {
+                "reward_1": float(np.mean(greedy_summary["results"]["reward_1"]["trial_final_profits"])),
+                "reward_2": float(np.mean(greedy_summary["results"]["reward_2"]["trial_final_profits"])),
+            }
+
     d = r2 - r1
     paired_se = d.std(ddof=1) / np.sqrt(n)
     paired_t = d.mean() / paired_se if paired_se > 0 else float("nan")
 
     fig, ax = plt.subplots(figsize=(6, 5.5))
     rng = np.random.default_rng(0)
-    groups = [("Reward 1", r1, "tab:red"), ("Reward 2", r2, "tab:blue")]
-    for i, (label, vals, color) in enumerate(groups):
+    groups = [("Reward 1", "reward_1", r1, "tab:red"), ("Reward 2", "reward_2", r2, "tab:blue")]
+    for i, (label, reward_key, vals, color) in enumerate(groups):
         jitter = rng.uniform(-0.08, 0.08, size=len(vals))
         ax.scatter(np.full(len(vals), i) + jitter, vals, color=color, alpha=0.4, s=28,
                    zorder=3, edgecolors="none")
         mean, std = vals.mean(), vals.std()
         ci95 = 1.96 * std / np.sqrt(n)
         ci_low, ci_high = mean - ci95, mean + ci95
+        annotation = (f"{money(mean)} (mean)\nn={n}, std={money(std)}\n"
+                      f"95% CI: [{money(ci_low)}, {money(ci_high)}]")
+        if greedy_means is not None:
+            annotation += f"\ngreedy after training: {money(greedy_means[reward_key])}"
         ax.errorbar([i], [mean], yerr=[std], fmt="o", color=color, ecolor=color,
                    elinewidth=2, capsize=6, markersize=9, zorder=4,
                    markeredgecolor="white", markeredgewidth=1.5)
-        ax.annotate(f"${mean:,.2f} (mean)\nn={n}, std=${std:,.0f}\n95% CI: [${ci_low:,.0f}, ${ci_high:,.0f}]",
-                   (i, mean), color=color, fontsize=8.5,
+        ax.annotate(annotation, (i, mean), color=color, fontsize=8.5,
                    xytext=(14, 0), textcoords="offset points", va="center", fontweight="bold")
 
     ax.axhline(0, color="gray", linewidth=0.7, zorder=1)
@@ -101,6 +125,7 @@ def main():
         "n_trials": n,
         "reward_1": summarize(r1),
         "reward_2": summarize(r2),
+        "greedy_after_training_mean": greedy_means,
         "paired_diff_mean": float(d.mean()),
         "paired_diff_std": float(d.std(ddof=1)),
         "paired_t_stat": float(paired_t),

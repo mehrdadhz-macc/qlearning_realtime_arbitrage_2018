@@ -1,0 +1,76 @@
+Experiment 6: 100-seed paired distribution, 2 MW rate (mirrors Experiment 2)
+================================================================================
+
+100 independent trials, each reward trained on the SAME 100 seeds
+(paired design: trial i's seed is identical for Reward 1 and Reward 2,
+so the comparison isn't contaminated by unrelated exploration luck).
+Seeds generated from --seed 42 (train.py's seed-generation RNG), single
+pass over 2016, at this project's best confirmed single-pass hyperparameters,
+at the paper's OTHER battery configuration (2 MW rate instead of 1 MW).
+
+Parameters
+----------
+data:                  data/train/isone_rt_hourly_lmp_2016.csv
+capacity_mwh:          8.0
+max_rate_mw:           2.0
+n_price_bins (M):      5
+price_bin_method:      quantile
+bin_calibration_hours: 720
+alpha:                 0.5
+gamma:                 0.9
+epsilon:               0.9
+smoothing (eta):       0.001
+efficiency_charge:     1.0
+efficiency_discharge:  1.0
+n_passes:              1
+n_trials:              100
+seed:                  42  (generates the 100 trial seeds; not used directly)
+
+Results -- average and interval across the 100 seeds (raw online training, epsilon=0.9)
+--------------------------------------------------------------------------------------------
+Reward 1: mean $2,060.84   std $3,586.78
+Reward 2: mean $4,137.40   std $3,427.57
+Paired diff (Reward 2 - Reward 1): mean +$2,076.56   paired t-stat: 18.07
+Reward 2 wins 99/100 paired trials.
+
+See training_distribution_plot.png for the full per-seed scatter with mean
++/- 1 std, and training_cumulative_profit_over_time_plot.png for the mean
++/- [10th,90th] percentile band over the full 8784-hour training pass.
+
+Held-out (2017) evaluation
+----------------------------
+Each of the 100 trials' Q-tables was also frozen (epsilon=0, no further
+learning) and replayed greedily on data/test/isone_rt_hourly_lmp_2017.csv.
+See held_out_2017_eval_plot.png, held_out_2017_eval_summary.json.
+
+Reward 1: mean $11,554.37   std $8,791.37
+Reward 2: mean $3,998.89   std $7,683.48
+Paired diff (Reward 2 - Reward 1): mean -$7,555.48   paired t-stat: -7.09
+Reward 1 wins 75/100 paired trials (Reward 2 wins only 25/100).
+
+Unlike Experiment 2 (1 MW), where the held-out difference was merely not
+significant (t=1.26), at 2 MW it REVERSES decisively -- Reward 1
+significantly beats Reward 2 on held-out data, despite Reward 2 winning
+training 99/100.
+
+Greedy-after-training (2016) evaluation -- isolating learned-policy quality
+------------------------------------------------------------------------------
+Epsilon=0.9 never decays during training (Algorithm 1), so ~90% of every
+trial's actions are random exploration -- the raw training number above is
+dominated by exploration cost, not a clean read of what the learned
+Q-table alone achieved. Each trial's final Q-table was ALSO frozen and
+replayed greedily (epsilon=0) on the SAME 2016 data it trained on
+(evaluate.py --data data/train/isone_rt_hourly_lmp_2016.csv --label
+greedy_2016 --max-rate-mw 2.0). See greedy_2016_eval_plot.png /
+greedy_2016_eval_summary.json.
+
+Reward 1: mean $11,284.61   std $7,955.23
+Reward 2: mean $3,679.68    std $6,669.03
+
+This flips the training-time story entirely: on the raw online number,
+Reward 2 leads (99/100 wins); on greedy-after-training, Reward 1 leads by
+a wide margin ($11,284.61 vs $3,679.68), and this greedy ranking matches
+the held-out ranking (Reward 1 wins) rather than the raw training ranking
+(Reward 2 wins). The raw training-time "Reward 2 wins" result at 2 MW is
+almost entirely an exploration-noise artifact, not a reflection of which
+reward function actually taught the better policy.

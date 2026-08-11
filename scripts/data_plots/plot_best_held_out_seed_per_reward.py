@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.data_loader import load_price_series
 from train import run_training
 from evaluate import greedy_rollout
-from scripts.data_plots._plot_helpers import make_price_profit_figure
+from scripts.data_plots._plot_helpers import make_price_profit_figure, money
 
 BEST_HELD_OUT_SEED_REWARD_1 = 345075200  # highest Reward-1 held-out profit ($21,739.65) in Experiment 2's 100-trial sweep
 BEST_HELD_OUT_SEED_REWARD_2 = 406886644  # highest Reward-2 held-out profit ($25,388.67) in Experiment 2's 100-trial sweep
@@ -97,11 +97,25 @@ def main():
         np.save(run_dir / f"held_out_2017_cumulative_profit_curve_{reward_kind}.npy", held_out_curve)
         print(f"{reward_kind} (seed={seed}): held-out 2017 profit = ${held_out_profit:,.2f}")
 
+        # epsilon=0.9 never decays during training (Algorithm 1), so the
+        # online training curve's own endpoint is dominated by random
+        # exploration cost, not a clean read of what the learned Q-table
+        # alone achieved. Freeze this SAME final Q-table and replay it
+        # greedily on the training data itself to isolate that.
+        greedy_train_curve = greedy_rollout(
+            prices, agent.q, args.capacity_mwh, args.max_rate_mw, edges,
+            args.efficiency_charge, args.efficiency_discharge)
+        greedy_train_profit = float(greedy_train_curve[-1])
+        np.save(run_dir / f"greedy_2016_cumulative_profit_curve_{reward_kind}.npy", greedy_train_curve)
+        print(f"{reward_kind} (seed={seed}): greedy-after-training 2016 profit = ${greedy_train_profit:,.2f}")
+
         results[reward_kind] = {"seed": seed, "training_final_profit": float(final_pass_profit),
+                                 "greedy_2016_final_profit": greedy_train_profit,
                                  "held_out_2017_final_profit": held_out_profit}
 
         label = f"{reward_kind.replace('_', ' ').title()} (seed={seed})"
-        train_curves[label] = (reward_kind, train_curve)
+        train_curves[label] = (reward_kind, train_curve,
+                                f" (greedy after training: {money(greedy_train_profit)})")
         eval_curves[label] = (reward_kind, held_out_curve)
 
     train_fig = make_price_profit_figure(
@@ -150,11 +164,13 @@ n_passes:              {args.n_passes}
 Results
 -------
 Reward 1: seed={results['reward_1']['seed']}
-  held-out profit (2017, frozen greedy): ${results['reward_1']['held_out_2017_final_profit']:,.2f}  (highest Reward-1 held-out profit found in the 100-trial sweep)
-  training profit (2016, online):        ${results['reward_1']['training_final_profit']:,.2f}
+  held-out profit (2017, frozen greedy):          ${results['reward_1']['held_out_2017_final_profit']:,.2f}  (highest Reward-1 held-out profit found in the 100-trial sweep)
+  training profit (2016, online, epsilon=0.9):    ${results['reward_1']['training_final_profit']:,.2f}
+  greedy-after-training profit (2016, epsilon=0): ${results['reward_1']['greedy_2016_final_profit']:,.2f}
 Reward 2: seed={results['reward_2']['seed']}
-  held-out profit (2017, frozen greedy): ${results['reward_2']['held_out_2017_final_profit']:,.2f}  (highest Reward-2 held-out profit found in the 100-trial sweep)
-  training profit (2016, online):        ${results['reward_2']['training_final_profit']:,.2f}
+  held-out profit (2017, frozen greedy):          ${results['reward_2']['held_out_2017_final_profit']:,.2f}  (highest Reward-2 held-out profit found in the 100-trial sweep)
+  training profit (2016, online, epsilon=0.9):    ${results['reward_2']['training_final_profit']:,.2f}
+  greedy-after-training profit (2016, epsilon=0): ${results['reward_2']['greedy_2016_final_profit']:,.2f}
 
 See training_best_held_out_seed_per_reward_plot.png for the training-time
 curves and held_out_2017_best_held_out_seed_per_reward_plot.png for the

@@ -8,16 +8,29 @@ hyperparameters (`--smoothing 0.001 --n-price-bins 5 --n-passes 1`), but
 at the paper's other battery configuration -- 8 MWh, **2 MW** rate instead
 of 1 MW.
 
-## Finding 1: training still favors Reward 2, slightly less decisively than at 1 MW
+## Finding 1: the raw training metric favors Reward 2 -- but that's mostly an artifact
 
-| | mean | std | 95% CI |
+| | online training mean | std | greedy-after-training mean |
 |---|---|---|---|
-| Reward 1 | $2,368.22 | $3,665.62 | -- |
-| Reward 2 | $4,249.79 | $3,476.44 | -- |
+| Reward 1 | $2,060.84 | $3,586.78 | **$11,284.61** |
+| Reward 2 | $4,137.40 | $3,427.57 | $3,679.68 |
 
-Paired diff (Reward 2 - Reward 1): mean +$2,076.56, paired **t=18.07**,
-Reward 2 wins 99/100 (vs. 100/100 at 1 MW, t=23.54 -- still overwhelming,
-just not literally universal).
+Paired diff on the raw online number (Reward 2 - Reward 1): mean +$2,076.56,
+paired **t=18.07**, Reward 2 wins 99/100 (vs. 100/100 at 1 MW, t=23.54 --
+still overwhelming, just not literally universal).
+
+**But this raw number is a poor proxy for what was actually learned.**
+Epsilon=0.9 never decays during training (Algorithm 1), so ~90% of every
+trial's actions are random exploration -- the online curve's endpoint
+mostly reflects exploration cost, not policy quality. Freezing each
+trial's *final* Q-table and replaying it greedily on the same 2016 data
+(epsilon=0, `evaluate.py --data data/train/... --label greedy_2016`)
+flips the story: **Reward 1's learned policies average $11,284.61**,
+nearly 3x Reward 2's $3,679.68. This greedy-2016 mean also lines up far
+more closely with the held-out mean below (both favor Reward 1) than
+either does with its own noisy online number -- see
+`training_distribution_plot.png`'s "greedy after training" annotation and
+`greedy_2016_eval_plot.png`.
 
 ## Finding 2: held-out data flips DECISIVELY against Reward 2 at 2 MW -- not just non-significant, but significantly reversed
 
@@ -40,11 +53,13 @@ positive.
 
 ## Files
 
-Same layout as Experiment 2: `training_distribution_plot.png`,
-`held_out_2017_distribution_plot.png`, `training_cumulative_profit_over_time_plot.png`,
-`held_out_2017_eval_plot.png`, matching `*_stats.json` / `*_summary.json`
-files, `params.txt`, and `individual_trials/trial_NN/` (Q-tables and
-histories, not pushed to git -- see root README's `.gitignore` note).
+Same layout as Experiment 2, plus the greedy-after-training evaluation:
+`training_distribution_plot.png`, `held_out_2017_distribution_plot.png`,
+`training_cumulative_profit_over_time_plot.png`, `held_out_2017_eval_plot.png`,
+`greedy_2016_eval_plot.png` (evaluate.py run with `--data data/train/...
+--label greedy_2016`), matching `*_stats.json` / `*_summary.json` files,
+`params.txt`, and `individual_trials/trial_NN/` (Q-tables and histories,
+not pushed to git -- see root README's `.gitignore` note).
 
 ## Reproduce
 
@@ -54,6 +69,8 @@ venv/bin/python3 train.py --data data/train/isone_rt_hourly_lmp_2016.csv --rewar
   --out-dir outputs/runs/<new_timestamp>_exp6_2mw_100seed_distribution
 venv/bin/python3 evaluate.py --run outputs/runs/<new_timestamp>_exp6_2mw_100seed_distribution \
   --data data/test/isone_rt_hourly_lmp_2017.csv --max-rate-mw 2.0
+venv/bin/python3 evaluate.py --run outputs/runs/<new_timestamp>_exp6_2mw_100seed_distribution \
+  --data data/train/isone_rt_hourly_lmp_2016.csv --label greedy_2016 --max-rate-mw 2.0
 venv/bin/python3 scripts/data_plots/plot_100seed_distribution.py --run-dir outputs/runs/<new_timestamp>_exp6_2mw_100seed_distribution --which training
 venv/bin/python3 scripts/data_plots/plot_100seed_distribution.py --run-dir outputs/runs/<new_timestamp>_exp6_2mw_100seed_distribution --which held_out
 venv/bin/python3 scripts/data_plots/plot_100seed_cumulative_profit.py --run-dir outputs/runs/<new_timestamp>_exp6_2mw_100seed_distribution

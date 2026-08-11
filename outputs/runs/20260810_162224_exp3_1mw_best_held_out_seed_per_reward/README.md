@@ -13,23 +13,29 @@ experiment flips the selection criterion: pick each reward's best
 curve of a held-out-best seed look any different from a typical or a
 training-best one?
 
-## Finding: the best held-out seeds are middling-to-poor training performers
+## Finding: the best held-out seeds are middling-to-poor *raw training* performers -- but genuinely good learned policies
 
-| | seed | held-out profit (2017) | training profit (2016) |
-|---|---|---|---|
-| Reward 1 | 345075200 | **$21,739.65** (highest Reward-1 held-out found) | $803.24 |
-| Reward 2 | 406886644 | **$25,388.67** (highest Reward-2 held-out found) | $4,149.10 |
+| | seed | held-out profit (2017) | raw training profit (2016, online, epsilon=0.9) | greedy-after-training profit (2016, epsilon=0) |
+|---|---|---|---|---|
+| Reward 1 | 345075200 | **$21,739.65** (highest Reward-1 held-out found) | $803.24 | $17,142.35 |
+| Reward 2 | 406886644 | **$25,388.67** (highest Reward-2 held-out found) | $4,149.10 | $19,262.51 |
 
-Reward 1's best-held-out seed is a training laggard: **negative** for most
-of 2016 (-$500 to -$1,500), rescued only by the Aug-11 price-spike jump,
-ending at a modest $803.24 -- nowhere near that reward's training-best seed
-($5,956.68, see Experiment 1). Reward 2's best-held-out seed does better in
-training ($4,149.10) but still well short of its own training-best
-($7,414.94). Combined with Experiment 1's opposite-direction result (best
-training seeds generalizing anywhere from terribly to excellently), this
-confirms training profit and held-out profit are close to independent
-signals for a single seed -- selecting on one tells you almost nothing
-about the other, in either direction.
+Reward 1's best-held-out seed looks like a training laggard on the raw
+online number: **negative** for most of 2016 (-$500 to -$1,500), rescued
+only by the Aug-11 price-spike jump, ending at a modest $803.24 -- nowhere
+near that reward's training-best seed ($5,956.68, see Experiment 1). But
+that raw number is misleading: replaying this SAME seed's final Q-table
+greedily (epsilon=0) on 2016 gives $17,142.35 -- it learned a genuinely
+strong policy all along, just buried under epsilon=0.9's exploration
+noise (epsilon never decays -- Algorithm 1). This greedy-2016 number lines
+up much better with the seed's own $21,739.65 held-out result than the raw
+training number ever did. Same story for Reward 2 (greedy $19,262.51 vs.
+held-out $25,388.67, vs. raw training only $4,149.10). Combined with
+Experiment 1's opposite-direction result (best-training seeds generalizing
+anywhere from terribly to excellently), this confirms *raw online training
+profit* and held-out profit are close to independent signals for a single
+seed -- but greedy-after-training profit (on either dataset) is a much
+more honest, mutually consistent measure of what was actually learned.
 
 Worth noting: unlike the training-time comparisons elsewhere in this
 project (which regularly show one dominant jump at the Aug-2016 heat-wave
@@ -41,8 +47,9 @@ one extreme one.
 
 ## Files
 
-- `training_best_held_out_seed_per_reward_plot.png` -- cumulative training profit (2016), both seeds
+- `training_best_held_out_seed_per_reward_plot.png` -- cumulative training profit (2016), both seeds; legend shows both the raw online (epsilon=0.9) and greedy-after-training (epsilon=0) final profit
 - `held_out_2017_best_held_out_seed_per_reward_plot.png` -- cumulative held-out profit (2017), same two Q-tables
+- `greedy_2016_cumulative_profit_curve_reward_*.npy` -- the greedy-after-training rollout curves
 - `params.txt` -- exact hyperparameters and results
 
 ## Reproduce
